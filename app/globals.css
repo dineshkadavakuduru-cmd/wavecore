@@ -1,0 +1,185 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+@layer base {
+  :root {
+    /* Chrome "signal" colour. The reactive loop overwrites these every frame
+       with the hue currently coming out of the treble band, so UI affordances
+       inherit the music's palette without any tweening library in the path. */
+    --signal-rgb: 168 200 255;
+    --signal-hue: 218;
+  }
+
+  * {
+    -webkit-tap-highlight-color: transparent;
+  }
+
+  html,
+  body {
+    height: 100%;
+  }
+
+  body {
+    @apply bg-ink-950 text-chalk font-sans antialiased;
+    overflow: hidden;
+    overscroll-behavior: none;
+    -webkit-font-smoothing: antialiased;
+    text-rendering: optimizeLegibility;
+  }
+
+  /* Full-screen experience: nothing should ever show a stray scrollbar. */
+  ::selection {
+    background: rgb(var(--signal-rgb) / 0.28);
+  }
+
+  :focus-visible {
+    outline: 1px solid rgb(var(--signal-rgb) / 0.7);
+    outline-offset: 2px;
+  }
+}
+
+@layer components {
+  /* Translucent chrome surface. Nearly invisible at rest by design. */
+  .glass {
+    @apply border border-white/[0.08] bg-white/[0.04] backdrop-blur-2xl;
+    box-shadow:
+      0 1px 0 0 rgb(255 255 255 / 0.06) inset,
+      0 24px 64px -28px rgb(0 0 0 / 0.9);
+  }
+
+  .glass-soft {
+    @apply border border-white/[0.06] bg-white/[0.025] backdrop-blur-xl;
+  }
+
+  /* Micro-label: the workhorse chrome type. Wide tracking, tiny, quiet. */
+  .label-micro {
+    @apply text-2xs uppercase text-chalk-faint;
+  }
+
+  .chrome-btn {
+    @apply inline-flex items-center justify-center gap-2 rounded-full border border-white/[0.09]
+           bg-white/[0.04] text-chalk-muted transition-colors duration-200
+           hover:border-white/[0.18] hover:bg-white/[0.08] hover:text-chalk
+           active:scale-[0.97];
+  }
+}
+
+@layer utilities {
+  /* Text gradient used for the pre-play hero wordmark. */
+  .text-aurora {
+    background-image: linear-gradient(
+      100deg,
+      #ffffff 0%,
+      rgb(var(--signal-rgb) / 0.95) 34%,
+      #c8d4ff 58%,
+      #ffffff 100%
+    );
+    background-clip: text;
+    -webkit-background-clip: text;
+    color: transparent;
+  }
+
+  .mask-fade-y {
+    mask-image: linear-gradient(
+      to bottom,
+      transparent 0%,
+      black 12%,
+      black 88%,
+      transparent 100%
+    );
+  }
+}
+
+/* ── native control styling ───────────────────────────────────────────────
+   The scrubber and volume slider are real <input type="range"> elements so
+   keyboard + screen-reader behaviour comes for free. Only the track/thumb
+   are restyled. */
+input[type="range"].chrome-range {
+  -webkit-appearance: none;
+  appearance: none;
+  width: 100%;
+  height: 18px;
+  background: transparent;
+  cursor: pointer;
+}
+
+input[type="range"].chrome-range::-webkit-slider-runnable-track {
+  height: 2px;
+  border-radius: 9999px;
+  background: linear-gradient(
+    to right,
+    rgb(var(--signal-rgb) / 0.9) 0%,
+    rgb(var(--signal-rgb) / 0.9) var(--range-progress, 0%),
+    rgb(255 255 255 / 0.14) var(--range-progress, 0%),
+    rgb(255 255 255 / 0.14) 100%
+  );
+}
+
+input[type="range"].chrome-range::-moz-range-track {
+  height: 2px;
+  border-radius: 9999px;
+  background: rgb(255 255 255 / 0.14);
+}
+
+input[type="range"].chrome-range::-moz-range-progress {
+  height: 2px;
+  border-radius: 9999px;
+  background: rgb(var(--signal-rgb) / 0.9);
+}
+
+input[type="range"].chrome-range::-webkit-slider-thumb {
+  -webkit-appearance: none;
+  appearance: none;
+  height: 10px;
+  width: 10px;
+  margin-top: -4px;
+  border-radius: 9999px;
+  background: #f2f4f8;
+  box-shadow: 0 0 0 4px rgb(var(--signal-rgb) / 0.12);
+  transition: transform 160ms ease;
+}
+
+input[type="range"].chrome-range::-moz-range-thumb {
+  height: 10px;
+  width: 10px;
+  border: none;
+  border-radius: 9999px;
+  background: #f2f4f8;
+}
+
+input[type="range"].chrome-range:hover::-webkit-slider-thumb {
+  transform: scale(1.25);
+}
+
+/* ── scrollbar (track list only) ─────────────────────────────────────── */
+.scroll-thin {
+  scrollbar-width: thin;
+  scrollbar-color: rgb(255 255 255 / 0.16) transparent;
+}
+
+.scroll-thin::-webkit-scrollbar {
+  width: 6px;
+}
+
+.scroll-thin::-webkit-scrollbar-track {
+  background: transparent;
+}
+
+.scroll-thin::-webkit-scrollbar-thumb {
+  border-radius: 9999px;
+  background: rgb(255 255 255 / 0.14);
+}
+
+.scroll-thin::-webkit-scrollbar-thumb:hover {
+  background: rgb(255 255 255 / 0.26);
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .animate-aurora,
+  .animate-sweep,
+  .animate-shimmer,
+  .animate-pulse-ring {
+    animation: none !important;
+  }
+}

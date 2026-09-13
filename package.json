@@ -1,0 +1,42 @@
+{
+  "name": "wavecore",
+  "version": "0.1.0",
+  "private": true,
+  "scripts": {
+    "dev": "next dev",
+    "build": "next build",
+    "start": "next start",
+    "lint": "next lint",
+    "typecheck": "tsc --noEmit",
+    "qa": "node scripts/qa.mjs",
+    "gen:tracks": "node scripts/generate-tracks.mjs"
+  },
+  "dependencies": {
+    "@react-three/drei": "^9.114.6",
+    "@react-three/fiber": "^8.17.10",
+    "@react-three/postprocessing": "^2.16.3",
+    "animejs": "^3.2.2",
+    "clsx": "^2.1.1",
+    "motion": "^11.15.0",
+    "next": "^14.2.35",
+    "postprocessing": "^6.36.4",
+    "react": "^18.3.1",
+    "react-dom": "^18.3.1",
+    "tailwind-merge": "^2.5.5",
+    "three": "^0.170.0"
+  },
+  "devDependencies": {
+    "@types/animejs": "^3.1.12",
+    "@types/node": "^22.10.2",
+    "@types/react": "^18.3.17",
+    "@types/react-dom": "^18.3.5",
+    "@types/three": "^0.170.0",
+    "autoprefixer": "^10.4.20",
+    "eslint": "^8.57.1",
+    "eslint-config-next": "^14.2.35",
+    "playwright-core": "^1.63.0",
+    "postcss": "^8.4.49",
+    "tailwindcss": "^3.4.17",
+    "typescript": "^5.7.2"
+  }
+}
