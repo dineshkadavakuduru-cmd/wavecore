@@ -80,7 +80,7 @@ export function ChromeLayer() {
               <ControlDock />
             </div>
 
-            <HintStack hydrated={mounted} />
+            <HintStack />
             <SourcePanel />
           </motion.div>
         )}
@@ -107,12 +107,12 @@ function BrandMark() {
 
 /** Keyboard hints. Bottom-right, so they never cross the transport.
  *
- * Shown only once hydration has completed: before that the shortcuts are not
- * wired up yet, and advertising a key that does nothing reads as broken. The
- * gate costs nothing visually — the hints simply appear with the rest of the
- * chrome's entrance instead of ahead of it.
+ * Server-rendered visible like the rest of the chrome. The keys aren't wired
+ * up until hydration, but the shortcuts are a convenience rather than a
+ * requirement — and the only `source`-dependent part (the Space hint) simply
+ * joins the stack once the audio context exists.
  */
-function HintStack({ hydrated }: { hydrated: boolean }) {
+function HintStack() {
   const { source } = useAudio();
 
   const hints: Array<[string, string]> = source
@@ -127,11 +127,7 @@ function HintStack({ hydrated }: { hydrated: boolean }) {
       ];
 
   return (
-    <div
-      aria-hidden={!hydrated}
-      className="absolute bottom-8 right-5 hidden flex-col items-end gap-1.5 opacity-0 transition-opacity duration-700 lg:flex data-[hydrated=true]:opacity-100"
-      data-hydrated={hydrated}
-    >
+    <div className="absolute bottom-8 right-5 hidden flex-col items-end gap-1.5 lg:flex">
       {hints.map(([key, label]) => (
         <span
           key={key}
