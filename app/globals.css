@@ -152,6 +152,69 @@ input[type="range"].chrome-range:hover::-webkit-slider-thumb {
   transform: scale(1.25);
 }
 
+/* Disabled read as intentional, not broken: the track dims, the thumb goes
+   hollow, and the grab cursor is replaced with not-allowed. JS re-enables
+   the control once a source is loaded and the state flips back. */
+input[type="range"].chrome-range:disabled {
+  cursor: not-allowed;
+}
+
+input[type="range"].chrome-range:disabled::-webkit-slider-runnable-track {
+  background: linear-gradient(
+    to right,
+    rgb(255 255 255 / 0.22) 0%,
+    rgb(255 255 255 / 0.22) var(--range-progress, 0%),
+    rgb(255 255 255 / 0.07) var(--range-progress, 0%),
+    rgb(255 255 255 / 0.07) 100%
+  );
+}
+
+input[type="range"].chrome-range:disabled::-webkit-slider-thumb {
+  background: rgb(255 255 255 / 0.25);
+  border: 1px solid rgb(255 255 255 / 0.45);
+  box-shadow: none;
+}
+
+input[type="range"].chrome-range:disabled::-moz-range-track {
+  background: rgb(255 255 255 / 0.07);
+}
+
+input[type="range"].chrome-range:disabled::-moz-range-progress {
+  background: rgb(255 255 255 / 0.22);
+}
+
+input[type="range"].chrome-range:disabled::-moz-range-thumb {
+  background: rgb(255 255 255 / 0.25);
+  border: 1px solid rgb(255 255 255 / 0.45);
+}
+
+input[type="range"].chrome-range:disabled:hover::-webkit-slider-thumb {
+  transform: none;
+}
+
+/* Post-hydration entrance for the chrome. The elements below are server-rendered
+   visible (so no-JS visitors see title, copy and the play buttons), then fade in
+   over the scene once JS mounts — the JS-free page stays fully readable. */
+@keyframes chrome-in {
+  from {
+    opacity: 0;
+  }
+  to {
+    opacity: 1;
+  }
+}
+
+.chrome-in {
+  animation: chrome-in 0.9s cubic-bezier(0.16, 1, 0.3, 1) backwards;
+  animation-delay: var(--chrome-delay, 0ms);
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .chrome-in {
+    animation: none;
+  }
+}
+
 /* ── scrollbar (track list only) ─────────────────────────────────────── */
 .scroll-thin {
   scrollbar-width: thin;
@@ -173,6 +236,31 @@ input[type="range"].chrome-range:hover::-webkit-slider-thumb {
 
 .scroll-thin::-webkit-scrollbar-thumb:hover {
   background: rgb(255 255 255 / 0.26);
+}
+
+/* ── no-JS fallback ────────────────────────────────────────────────────
+   The scene, the transport and the demo tracks all need JS. This is styled
+   with plain CSS (no utility classes needed pre-hydration) and only ever
+   renders inside <noscript>. */
+.noscript-note {
+  position: fixed;
+  inset: auto 1.25rem 1.25rem;
+  z-index: 100;
+  max-width: 26rem;
+  padding: 1rem 1.25rem;
+  border: 1px solid rgb(255 255 255 / 0.14);
+  border-radius: 0.75rem;
+  background: rgb(6 8 16 / 0.92);
+  color: rgb(232 236 244);
+  font-family: var(--font-inter), system-ui, sans-serif;
+  font-size: 0.8125rem;
+  line-height: 1.6;
+  box-shadow: 0 24px 64px -28px rgb(0 0 0 / 0.9);
+}
+
+.noscript-note p + p {
+  margin-top: 0.5rem;
+  color: rgb(232 236 244 / 0.6);
 }
 
 @media (prefers-reduced-motion: reduce) {

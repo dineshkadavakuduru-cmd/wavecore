@@ -18,9 +18,22 @@ import { TitleReveal } from "./TitleReveal";
  * exit animation. The catch with fading instead of unmounting is that invisible
  * controls stay clickable and tabbable, so while hidden the layer also gets
  * `inert` and a descendant-wide pointer-events override.
+ *
+ * SSR and no-JS: the layer server-renders fully visible. Motion's opacity
+ * animation is only switched on after hydration (the `mounted` flag below),
+ * and the fade-in over the canvas is handled by the one-shot `.chrome-in`
+ * CSS animation on the wrapper — so a slow-JS visitor gets a readable page
+ * rather than a blank one, and the pre/post-hydration markup matches.
  */
 export function ChromeLayer() {
   const { visible, zen } = useChrome();
+  // Mirrors hydration: the first client render must match the server markup
+  // (chrome visible), and the entrance animation is armed one commit later.
+  const [mounted, setMounted] = useState(false);
+  useEffect(() => {
+    const raf = requestAnimationFrame(() => setMounted(true));
+    return () => cancelAnimationFrame(raf);
+  }, []);
   // `inert` landed properly in React 19's types; React 18 accepts the attribute
   // as a string, which is what this spreads in.
   const inert = !visible && !zen ? ({ inert: "" } as Record<string, string>) : {};
@@ -30,7 +43,7 @@ export function ChromeLayer() {
       {...inert}
       aria-hidden={!visible}
       className={cn(
-        "absolute inset-0 z-30",
+        "chrome-in absolute inset-0 z-30",
         !visible && "[&_*]:!pointer-events-none",
       )}
     >
@@ -38,8 +51,12 @@ export function ChromeLayer() {
         {!zen && (
           <motion.div
             key="chrome"
-            initial={{ opacity: 0 }}
-            animate={{ opacity: visible ? 1 : 0 }}
+            initial={false}
+            animate={
+              mounted
+                ? { opacity: visible ? 1 : 0 }
+                : { opacity: 1 }
+            }
             exit={{ opacity: 0 }}
             transition={{ duration: 0.5, ease: [0.16, 1, 0.3, 1] }}
             className="pointer-events-none absolute inset-0"
@@ -63,7 +80,7 @@ export function ChromeLayer() {
               <ControlDock />
             </div>
 
-            <HintStack />
+            <HintStack hydrated={mounted} />
             <SourcePanel />
           </motion.div>
         )}
@@ -88,8 +105,14 @@ function BrandMark() {
   );
 }
 
-/** Keyboard hints. Bottom-right, so they never cross the transport. */
-function HintStack() {
+/** Keyboard hints. Bottom-right, so they never cross the transport.
+ *
+ * Shown only once hydration has completed: before that the shortcuts are not
+ * wired up yet, and advertising a key that does nothing reads as broken. The
+ * gate costs nothing visually — the hints simply appear with the rest of the
+ * chrome's entrance instead of ahead of it.
+ */
+function HintStack({ hydrated }: { hydrated: boolean }) {
   const { source } = useAudio();
 
   const hints: Array<[string, string]> = source
@@ -104,7 +127,11 @@ function HintStack() {
       ];
 
   return (
-    <div className="absolute bottom-8 right-5 hidden flex-col items-end gap-1.5 lg:flex">
+    <div
+      aria-hidden={!hydrated}
+      className="absolute bottom-8 right-5 hidden flex-col items-end gap-1.5 opacity-0 transition-opacity duration-700 lg:flex data-[hydrated=true]:opacity-100"
+      data-hydrated={hydrated}
+    >
       {hints.map(([key, label]) => (
         <span
           key={key}

@@ -44,10 +44,10 @@ export const viewport: Viewport = {
   themeColor: "#04050a",
   width: "device-width",
   initialScale: 1,
-  maximumScale: 1,
-  // The whole app is a single full-bleed surface; pinch-zoom would only ever
-  // fight the camera's own drag-to-orbit gesture.
-  userScalable: false,
+  // No maximumScale / userScalable here: disabling pinch-zoom is a WCAG 1.4.4
+  // failure, and zoom must stay available. The canvas keeps its drag-to-orbit
+  // gesture via `touch-action: none` on the <canvas> element itself, which
+  // handles the single-pointer case without taking zoom away from everyone.
 };
 
 export default function RootLayout({
@@ -59,6 +59,19 @@ export default function RootLayout({
         className={`${inter.variable} ${instrumentSerif.variable} ${jetbrainsMono.variable} h-full overflow-hidden`}
       >
         {children}
+        <noscript>
+          <div className="noscript-note" role="note">
+            <p>
+              Wavecore is a real-time WebGL audio visualiser, and it needs
+              JavaScript to run.
+            </p>
+            <p>
+              Enable JavaScript to load the scene and the demo tracks — or just
+              enjoy the quiet: everything here is generated in your browser,
+              and there is nothing to download.
+            </p>
+          </div>
+        </noscript>
       </body>
     </html>
   );

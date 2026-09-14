@@ -1,6 +1,7 @@
 "use client";
 
 import { AnimatePresence, motion } from "motion/react";
+import { useEffect, useState } from "react";
 import { useAudio } from "@/lib/audio/provider";
 import { cn, formatTime } from "@/lib/utils";
 
@@ -14,11 +15,15 @@ import { cn, formatTime } from "@/lib/utils";
  *
  * Every animation here is Motion's, which is correct: none of it is audio
  * data. It runs once on mount and once on exit, not 60 times a second.
+ *
+ * SSR and no-JS: the markup server-renders fully visible (no Motion initial
+ * state), and the staggered entrance is switched on only after hydration.
+ * Before that, the block simply sits visible — a slow-JS visitor reads the
+ * title and the track buttons instead of staring at a blank page.
  */
 
 const container = {
-  hidden: {},
-  show: {
+  visible: {
     transition: { staggerChildren: 0.09, delayChildren: 0.35 },
   },
   exit: {
@@ -27,8 +32,7 @@ const container = {
 };
 
 const rise = {
-  hidden: { opacity: 0, y: 22 },
-  show: {
+  visible: {
     opacity: 1,
     y: 0,
     transition: { duration: 0.9, ease: [0.16, 1, 0.3, 1] as const },
@@ -43,6 +47,13 @@ const rise = {
 export function IdleHero() {
   const { tracks, source, selectDemo } = useAudio();
   const started = source !== null;
+  // Mirrors hydration: SSR and the first client render agree the content is
+  // visible; the entrance animation is enabled one commit after mount.
+  const [animate, setAnimate] = useState(false);
+  useEffect(() => {
+    const raf = requestAnimationFrame(() => setAnimate(true));
+    return () => cancelAnimationFrame(raf);
+  }, []);
 
   return (
     <AnimatePresence>
@@ -50,8 +61,8 @@ export function IdleHero() {
         <motion.div
           key="hero"
           variants={container}
-          initial="hidden"
-          animate="show"
+          initial={false}
+          animate={animate ? "visible" : false}
           exit="exit"
           className="pointer-events-auto w-full max-w-2xl"
         >

@@ -87,13 +87,21 @@ export function ControlDock() {
       {shown && (
         <motion.div
           key="dock"
-          initial={{ opacity: 0, y: 28, filter: "blur(8px)" }}
+          initial={false}
           animate={{ opacity: 1, y: 0, filter: "blur(0px)" }}
           exit={{ opacity: 0, y: 22, filter: "blur(8px)" }}
           transition={SPRING}
           className="pointer-events-auto w-[min(50rem,94vw)]"
         >
-          <div className="glass flex items-center gap-2 rounded-full px-2.5 py-2 sm:gap-3 sm:px-3.5">
+          {/* The dock is server-rendered visible and only fades in over the
+              scene after hydration (see globals.css .chrome-in), so no-JS and
+              slow-JS visitors see the transport — with its play button and
+              seek slider in their explicit disabled state — instead of a
+              missing bottom edge. */}
+          <div
+            className="glass chrome-in flex items-center gap-2 rounded-full px-2.5 py-2 sm:gap-3 sm:px-3.5"
+            style={{ "--chrome-delay": "500ms" } as React.CSSProperties}
+          >
             {/* ── transport buttons ─────────────────────────────────── */}
             <div className="flex items-center gap-1">
               <button
@@ -113,7 +121,8 @@ export function ControlDock() {
                 className={cn(
                   "grid h-10 w-10 place-items-center rounded-full transition-all duration-200",
                   "bg-chalk text-ink-950 hover:scale-[1.06] active:scale-95",
-                  "disabled:cursor-not-allowed disabled:bg-white/15 disabled:text-chalk-ghost disabled:hover:scale-100",
+                  "disabled:cursor-not-allowed disabled:bg-white/15 disabled:text-chalk-ghost",
+                  "disabled:shadow-[inset_0_0_0_1px_rgb(255_255_255/0.16)] disabled:hover:scale-100",
                 )}
               >
                 {isPlaying ? (
