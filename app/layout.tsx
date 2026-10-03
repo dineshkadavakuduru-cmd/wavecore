@@ -31,6 +31,9 @@ const jetbrainsMono = JetBrains_Mono({
   display: "swap",
 });
 
+const siteUrl = "https://wavecore-gilt.vercel.app/";
+const ogImage = "/og-image.png";
+
 export const metadata: Metadata = {
   title: "Wavecore — audio-reactive 3D visualiser",
   description:
@@ -38,6 +41,36 @@ export const metadata: Metadata = {
   applicationName: "Wavecore",
   authors: [{ name: "Wavecore" }],
   keywords: ["audio visualiser", "webgl", "three.js", "web audio api", "generative"],
+  metadataBase: new URL(siteUrl),
+  openGraph: {
+    type: "website",
+    url: siteUrl,
+    title: "Wavecore — audio-reactive 3D visualiser",
+    description:
+      "A full-screen 3D scene that reacts in real time to whatever is playing.",
+    siteName: "Wavecore",
+    images: [
+      {
+        url: ogImage,
+        width: 1200,
+        height: 630,
+        alt: "Wavecore audio-reactive 3D visualiser preview",
+      },
+    ],
+  },
+  twitter: {
+    card: "summary_large_image",
+    title: "Wavecore — audio-reactive 3D visualiser",
+    description:
+      "A full-screen 3D scene that reacts in real time to whatever is playing.",
+    images: [ogImage],
+  },
+  icons: {
+    icon: "/favicon.ico",
+    shortcut: "/favicon.ico",
+    apple: "/icons/icon-192.png",
+  },
+  manifest: "/manifest.json",
 };
 
 export const viewport: Viewport = {
@@ -55,6 +88,9 @@ export default function RootLayout({
 }: Readonly<{ children: React.ReactNode }>) {
   return (
     <html lang="en" className="bg-ink-950">
+      <head>
+        <link rel="preconnect" href="https://fonts.gstatic.com" crossOrigin="anonymous" />
+      </head>
       <body
         className={`${inter.variable} ${instrumentSerif.variable} ${jetbrainsMono.variable} h-full overflow-hidden`}
       >

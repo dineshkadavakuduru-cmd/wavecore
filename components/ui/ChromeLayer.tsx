@@ -1,12 +1,13 @@
 "use client";
 
-import { AnimatePresence, motion } from "motion/react";
+import { AnimatePresence, motion, useReducedMotion } from "motion/react";
 import { useEffect, useState } from "react";
 import { useAudio } from "@/lib/audio/provider";
 import { useChrome } from "@/lib/chrome";
 import { cn } from "@/lib/utils";
 import { ControlDock } from "./ControlDock";
 import { IdleHero } from "./IdleHero";
+import { LiveRegion } from "./LiveRegion";
 import { SourcePanel } from "./SourcePanel";
 import { Telemetry } from "./Telemetry";
 import { TitleReveal } from "./TitleReveal";
@@ -27,6 +28,7 @@ import { TitleReveal } from "./TitleReveal";
  */
 export function ChromeLayer() {
   const { visible, zen } = useChrome();
+  const shouldReduceMotion = useReducedMotion();
   // Mirrors hydration: the first client render must match the server markup
   // (chrome visible), and the entrance animation is armed one commit later.
   const [mounted, setMounted] = useState(false);
@@ -38,6 +40,10 @@ export function ChromeLayer() {
   // as a string, which is what this spreads in.
   const inert = !visible && !zen ? ({ inert: "" } as Record<string, string>) : {};
 
+  const transition = shouldReduceMotion
+    ? { duration: 0 }
+    : { duration: 0.5, ease: [0.16, 1, 0.3, 1] };
+
   return (
     <div
       {...inert}
@@ -47,6 +53,16 @@ export function ChromeLayer() {
         !visible && "[&_*]:!pointer-events-none",
       )}
     >
+      {/* Skip to controls link — first focusable element for keyboard users */}
+      <a
+        href="#control-dock"
+        className="sr-only focus:not-sr-only focus:absolute focus:top-4 focus:left-4 focus:z-50 focus:glass focus:px-3 focus:py-2 focus:rounded-xl focus:text-sm focus:text-chalk focus:border focus:border-white/20"
+      >
+        Skip to controls
+      </a>
+
+      <LiveRegion />
+
       <AnimatePresence>
         {!zen && (
           <motion.div
@@ -58,7 +74,7 @@ export function ChromeLayer() {
                 : { opacity: 1 }
             }
             exit={{ opacity: 0 }}
-            transition={{ duration: 0.5, ease: [0.16, 1, 0.3, 1] }}
+            transition={transition}
             className="pointer-events-none absolute inset-0"
           >
             {/* ── top rail ───────────────────────────────────────────── */}
@@ -76,11 +92,12 @@ export function ChromeLayer() {
             <TitleReveal />
 
             {/* ── bottom-centre: transport ─────────────────────────── */}
-            <div className="absolute inset-x-0 bottom-5 flex justify-center px-4 sm:bottom-6">
+            <div className="absolute inset-x-0 bottom-5 flex justify-center px-4 sm:bottom-6" id="control-dock">
               <ControlDock />
             </div>
 
             <HintStack />
+            <MobileControlsHint />
             <SourcePanel />
           </motion.div>
         )}
@@ -140,6 +157,74 @@ function HintStack() {
         </span>
       ))}
     </div>
+  );
+}
+
+/**
+ * Mobile-only hint: "Tap to show controls"
+ *
+ * Shows once per session on first visit when chrome is auto-hidden.
+ * Only renders on screens below lg breakpoint.
+ */
+function MobileControlsHint() {
+  const { visible, reveal } = useChrome();
+  const [show, setShow] = useState(false);
+  const [mounted, setMounted] = useState(false);
+
+  useEffect(() => {
+    setMounted(true);
+    // Check if we've shown the hint before in this session
+    const hasSeenHint = sessionStorage.getItem("wavecore-mobile-hint-shown");
+    if (!hasSeenHint && !visible) {
+      // Show after a short delay so the user has time to notice the auto-hide
+      const timer = window.setTimeout(() => setShow(true), 1500);
+      return () => window.clearTimeout(timer);
+    }
+  }, [visible, mounted]);
+
+  const handleDismiss = () => {
+    setShow(false);
+    sessionStorage.setItem("wavecore-mobile-hint-shown", "true");
+  };
+
+  if (!mounted || !show || visible) return null;
+
+  return (
+    <motion.div
+      key="mobile-hint"
+      initial={{ opacity: 0, y: 12, scale: 0.95 }}
+      animate={{ opacity: 1, y: 0, scale: 1 }}
+      exit={{ opacity: 0, y: -8, scale: 0.95 }}
+      transition={{ type: "spring", stiffness: 380, damping: 36 }}
+      onClick={handleDismiss}
+      className="pointer-events-auto lg:hidden absolute bottom-24 left-1/2 -translate-x-1/2 z-40"
+      role="button"
+      tabIndex={0}
+      onKeyDown={(e) => e.key === "Enter" && handleDismiss()}
+      aria-label="Tap to show controls"
+    >
+      <div className="glass rounded-2xl px-5 py-3 flex items-center gap-3 whitespace-nowrap">
+        <span className="relative grid h-8 w-8 place-items-center rounded-full border border-white/10 bg-white/[0.04]">
+          <svg
+            className="h-4 w-4 text-chalk-muted"
+            fill="none"
+            stroke="currentColor"
+            viewBox="0 0 24 24"
+            strokeWidth={1.5}
+            strokeLinecap="round"
+            strokeLinejoin="round"
+          >
+            <path d="M12 5v14M19 12H5" />
+          </svg>
+        </span>
+        <span className="font-mono text-2xs uppercase tracking-[0.14em] text-chalk-muted">
+          Tap to show controls
+        </span>
+        <kbd className="rounded border border-white/10 bg-white/[0.03] px-2 py-0.5 text-[0.55rem] text-chalk-faint">
+          Space
+        </kbd>
+      </div>
+    </motion.div>
   );
 }
 

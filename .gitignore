@@ -29,8 +29,14 @@ yarn-error.log*
 .vercel
 
 # generated demo audio (regenerate with `npm run gen:tracks`)
-# NOTE: intentionally committed so the app works on clone / Vercel deploy
-# /public/tracks/*.wav
+# Committed: compressed OGG (~0.7 MB each) for fast clones and deploys
+# Excluded: uncompressed WAV (~7 MB each) — regenerate with `npm run gen:tracks` if needed
+/public/tracks/*.wav
+!/public/tracks/*.ogg
+
+# generated icons (regenerate with `node scripts/generate-icons.mjs`)
+# Committed: favicon.ico, icons/, apple-touch-icon.png, og-image.png
+# These are small and needed for PWA/SEO on every deploy
 
 # playwright QA artefacts
 /.qa-shots/

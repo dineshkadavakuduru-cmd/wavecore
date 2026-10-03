@@ -1,7 +1,7 @@
 "use client";
 
 import { AnimatePresence, motion } from "motion/react";
-import { useCallback, useEffect, useRef } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import { useAudio } from "@/lib/audio/provider";
 import { useChrome } from "@/lib/chrome";
 import { cancelFrame, scheduleFrame } from "@/lib/raf";
@@ -32,6 +32,8 @@ import {
 
 const SPRING = { type: "spring", stiffness: 420, damping: 38, mass: 0.9 } as const;
 
+const VOLUME_SPRING = { type: "spring", stiffness: 480, damping: 42, mass: 0.8 } as const;
+
 export function ControlDock() {
   const {
     engine,
@@ -50,6 +52,8 @@ export function ControlDock() {
   const elapsedRef = useRef<HTMLSpanElement>(null);
   const durationRef = useRef<HTMLSpanElement>(null);
   const scrubbing = useRef(false);
+  const [showMobileVolume, setShowMobileVolume] = useState(false);
+  const mobileVolumeRef = useRef<HTMLDivElement>(null);
 
   const syncDom = useCallback(() => {
     const input = progressRef.current;
@@ -80,7 +84,37 @@ export function ControlDock() {
     syncDom();
   }, [duration, syncDom]);
 
+  // Close mobile volume popover when clicking outside
+  useEffect(() => {
+    if (!showMobileVolume) return;
+    const onPointerDown = (event: PointerEvent) => {
+      if (
+        mobileVolumeRef.current &&
+        !mobileVolumeRef.current.contains(event.target as Node)
+      ) {
+        setShowMobileVolume(false);
+      }
+    };
+    document.addEventListener("pointerdown", onPointerDown);
+    return () => document.removeEventListener("pointerdown", onPointerDown);
+  }, [showMobileVolume]);
+
   const shown = visible && !zen;
+
+  const handleVolumeButtonClick = (event: React.MouseEvent) => {
+    event.stopPropagation();
+    setShowMobileVolume((prev) => !prev);
+  };
+
+  const handleMobileVolumeChange = (value: number) => {
+    setVolume(value);
+  };
+
+  const handleMobileVolumeKeyDown = (event: React.KeyboardEvent) => {
+    if (event.key === "Escape") {
+      setShowMobileVolume(false);
+    }
+  };
 
   return (
     <AnimatePresence>
@@ -108,9 +142,9 @@ export function ControlDock() {
                 type="button"
                 onClick={() => step(-1)}
                 aria-label="Previous track"
-                className="chrome-btn hidden h-8 w-8 !rounded-full sm:inline-flex"
+                className="chrome-btn h-7 w-7 !rounded-full sm:h-8 sm:w-8"
               >
-                <PrevIcon className="h-4 w-4" />
+                <PrevIcon className="h-4 w-4 sm:h-4 sm:w-4" />
               </button>
 
               <button
@@ -136,9 +170,9 @@ export function ControlDock() {
                 type="button"
                 onClick={() => step(1)}
                 aria-label="Next track"
-                className="chrome-btn hidden h-8 w-8 !rounded-full sm:inline-flex"
+                className="chrome-btn h-7 w-7 !rounded-full sm:h-8 sm:w-8"
               >
-                <NextIcon className="h-4 w-4" />
+                <NextIcon className="h-4 w-4 sm:h-4 sm:w-4" />
               </button>
             </div>
 
@@ -186,6 +220,55 @@ export function ControlDock() {
             </span>
 
             {/* ── volume ────────────────────────────────────────────── */}
+            {/* Mobile: volume button with popover */}
+            <div className="relative lg:hidden">
+              <button
+                type="button"
+                onClick={handleVolumeButtonClick}
+                aria-label={volume > 0 ? "Mute" : "Unmute"}
+                aria-expanded={showMobileVolume}
+                aria-haspopup="true"
+                className="text-chalk-faint transition-colors hover:text-chalk"
+              >
+                <VolumeIcon className="h-5 w-5" muted={volume === 0} />
+              </button>
+
+              <AnimatePresence>
+                {showMobileVolume && (
+                  <motion.div
+                    key="mobile-volume"
+                    initial={{ opacity: 0, y: 8, scaleY: 0.9 }}
+                    animate={{ opacity: 1, y: 0, scaleY: 1 }}
+                    exit={{ opacity: 0, y: 8, scaleY: 0.9 }}
+                    transition={VOLUME_SPRING}
+                    ref={mobileVolumeRef}
+                    className="absolute bottom-full right-0 mb-2 glass rounded-xl p-3 w-14"
+                    role="dialog"
+                    aria-label="Volume"
+                    onKeyDown={handleMobileVolumeKeyDown}
+                  >
+                    <input
+                      type="range"
+                      className="chrome-range w-full h-24 -rotate-90 origin-center"
+                      min={0}
+                      max={1}
+                      step={0.01}
+                      value={volume}
+                      aria-label="Volume"
+                      style={{
+                        "--range-progress": `${volume * 100}%`,
+                        transformOrigin: "center",
+                      } as React.CSSProperties}
+                      onChange={(event) =>
+                        handleMobileVolumeChange(Number(event.target.value))
+                      }
+                    />
+                  </motion.div>
+                )}
+              </AnimatePresence>
+            </div>
+
+            {/* Desktop: inline volume slider */}
             <div className="hidden items-center gap-2 pl-1 lg:flex">
               <button
                 type="button"

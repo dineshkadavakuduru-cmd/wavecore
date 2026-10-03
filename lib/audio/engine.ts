@@ -47,6 +47,8 @@ interface Playable {
 class ElementPlayable implements Playable {
   private loadedSrc: string | null = null;
   private fallbackDuration: number;
+  private fallbackSrc: string | null = null;
+  private fallbackAttempted = false;
 
   constructor(
     private el: HTMLAudioElement,
@@ -56,13 +58,11 @@ class ElementPlayable implements Playable {
   ) {
     this.fallbackDuration = fallbackDuration;
     this.el.addEventListener("ended", this.handleEnded);
-    // Metadata arrives asynchronously; React needs telling so the scrubber picks
-    // up the real duration instead of the manifest's rounded one.
     this.el.addEventListener("loadedmetadata", this.handleMeta);
+    this.el.addEventListener("error", this.handleError);
   }
 
   private handleEnded = () => {
-    // guard: `ended` can also fire while tearing down a src between tracks
     if (this.el.currentTime > 0) this.onEnded();
   };
 
@@ -73,16 +73,29 @@ class ElementPlayable implements Playable {
     this.onMeta();
   };
 
-  load(src: string, knownDuration = 0) {
+  /** Handle load errors — if primary (compressed) fails, try fallback (WAV). */
+  private handleError = () => {
+    if (this.fallbackSrc && !this.fallbackAttempted) {
+      this.fallbackAttempted = true;
+      // Switch to fallback source
+      this.el.src = this.fallbackSrc;
+      this.el.load();
+    }
+  };
+
+  /**
+   * Load a track with optional fallback.
+   * @param src Primary source (compressed format, e.g., OGG)
+   * @param fallbackSrc Fallback source (uncompressed, e.g., WAV)
+   * @param knownDuration Manifest duration for immediate scrubber
+   */
+  load(src: string, fallbackSrc: string | null = null, knownDuration = 0) {
+    this.fallbackSrc = fallbackSrc;
+    this.fallbackAttempted = false;
     if (src !== this.loadedSrc) {
       this.loadedSrc = src;
-      // Assigning `src` already kicks off loading; calling `load()` on top of it
-      // aborts the very request we just started, which is what produces
-      // "play() request was interrupted by a new load request".
       this.el.src = src;
     }
-    // Use the manifest duration immediately so the scrubber is never stuck at
-    // 0:00 while metadata is still in flight.
     if (knownDuration > 0) this.fallbackDuration = knownDuration;
   }
 
@@ -465,7 +478,7 @@ export class AudioEngine {
     const playable = this.ensureElement(ctx);
     // Only tear down the outgoing playable if it isn't the shared element.
     if (this.playable && this.playable !== playable) this.playable.destroy();
-    playable.load(track.src, track.duration);
+    playable.load(track.src, track.srcFallback ?? null, track.duration);
     this.playable = playable;
     this.emit();
     return playable;

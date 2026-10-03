@@ -167,18 +167,18 @@ let bassEnvelope = 0;
 let lastPunchAt = -10;
 
 /** Minimum gap between camera punches, in seconds. */
-const PUNCH_COOLDOWN = 0.34;
+export const PUNCH_COOLDOWN = 0.34;
 /** Bass must exceed the slow envelope by this much to count as a hit. */
-const PUNCH_THRESHOLD = 0.12;
+export const PUNCH_THRESHOLD = 0.12;
 
 /** Time constants (ms). Attack is fast, release is slow. */
-const T_SPECTRUM_ATTACK = 22;
-const T_SPECTRUM_RELEASE = 120;
-const T_AMBIENT = 1100;
-const T_HUE = 620;
-const T_ENVELOPE = 520;
-const T_PUNCH_DECAY = 150;
-const T_TRANSIENT_DECAY = 90;
+export const T_SPECTRUM_ATTACK = 22;
+export const T_SPECTRUM_RELEASE = 120;
+export const T_AMBIENT = 1100;
+export const T_HUE = 620;
+export const T_ENVELOPE = 520;
+export const T_PUNCH_DECAY = 150;
+export const T_TRANSIENT_DECAY = 90;
 
 /** Mean of the eased, tilted spectrum across a slot range. */
 function bandAverage(from: number, to: number) {

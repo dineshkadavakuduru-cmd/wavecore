@@ -3,7 +3,8 @@
  * Wavecore demo-track generator.
  *
  * Renders the bundled demo tracks from scratch, offline, straight to 16-bit
- * PCM WAV in `public/tracks/`. Nothing is sampled or downloaded, so the whole
+ * PCM WAV in `public/tracks/`. Also generates OGG (Opus) compressed versions
+ * for smaller bundle size. Nothing is sampled or downloaded, so the whole
  * pack is unambiguously royalty-free and reproducible from this file alone.
  *
  * The tracks are written specifically to exercise the visualiser: every one has
@@ -14,13 +15,19 @@
  *   node scripts/generate-tracks.mjs     # or: npm run gen:tracks
  */
 
-import { mkdirSync, writeFileSync } from "node:fs";
+import { mkdirSync, writeFileSync, existsSync, statSync } from "node:fs";
 import { dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
+import ffmpeg from "fluent-ffmpeg";
+import ffmpegStatic from "ffmpeg-static";
+
+if (ffmpegStatic) ffmpeg.setFfmpegPath(ffmpegStatic);
 
 const SR = 44100;
 const ROOT = join(dirname(fileURLToPath(import.meta.url)), "..");
 const OUT_DIR = join(ROOT, "public", "tracks");
+
+const OGG_BITRATE = "128k"; // Opus ~128 kbps stereo — transparent for this material
 
 const TWO_PI = Math.PI * 2;
 
@@ -687,6 +694,30 @@ function writeWav(file, L, R) {
   return buf.length;
 }
 
+/* ── ogg conversion ───────────────────────────────────────────────────── */
+
+/** Convert a WAV file to OGG (Opus) using ffmpeg. Returns the output file size. */
+function convertToOgg(wavFile, oggFile) {
+  return new Promise((resolve, reject) => {
+    const cmd = ffmpeg(wavFile)
+      .outputOptions([
+        "-c:a", "libopus",
+        "-b:a", OGG_BITRATE,
+        "-vbr", "on",
+        "-compression_level", "10",
+        "-application", "audio",
+      ])
+      .on("end", () => {
+        const stats = existsSync(oggFile) ? statSync(oggFile) : null;
+        resolve(stats?.size ?? 0);
+      })
+      .on("error", (err) => reject(err))
+      .save(oggFile);
+    // Ensure the command is actually started
+    cmd.run();
+  });
+}
+
 /* ── run ──────────────────────────────────────────────────────────────── */
 
 const TRACKS = [
@@ -725,8 +756,13 @@ const manifest = [];
 for (const t of TRACKS) {
   const started = Date.now();
   const { L, R: right, duration } = t.render();
-  const file = join(OUT_DIR, `${t.slug}.wav`);
-  const bytes = writeWav(file, L, right);
+  const wavFile = join(OUT_DIR, `${t.slug}.wav`);
+  const wavBytes = writeWav(wavFile, L, right);
+
+  // Convert to OGG (Opus) for smaller delivery size
+  const oggFile = join(OUT_DIR, `${t.slug}.ogg`);
+  const oggBytes = await convertToOgg(wavFile, oggFile);
+
   manifest.push({
     slug: t.slug,
     title: t.title,
@@ -734,11 +770,12 @@ for (const t of TRACKS) {
     bpm: t.bpm,
     key: t.key,
     mood: t.mood,
-    src: `/tracks/${t.slug}.wav`,
+    src: `/tracks/${t.slug}.ogg`,       // primary: compressed
+    srcFallback: `/tracks/${t.slug}.wav`, // fallback: uncompressed
     duration: Math.round(duration * 10) / 10,
   });
   console.log(
-    `  ✓ ${t.slug}.wav  ${duration.toFixed(1)}s  ${(bytes / 1048576).toFixed(1)} MB  (${Date.now() - started}ms)`,
+    `  ✓ ${t.slug}.wav  ${duration.toFixed(1)}s  ${(wavBytes / 1048576).toFixed(1)} MB  →  ${t.slug}.ogg  ${(oggBytes / 1048576).toFixed(1)} MB  (${Date.now() - started}ms)`,
   );
 }
 
@@ -753,7 +790,8 @@ export type DemoTrack = {
   bpm: number;
   key: string;
   mood: string;
-  src: string;
+  src: string;         // primary (compressed OGG)
+  srcFallback: string; // fallback (WAV)
   /** Seconds. */
   duration: number;
 };

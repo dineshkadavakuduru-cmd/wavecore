@@ -1,0 +1,36 @@
+{
+  "name": "Wavecore",
+  "short_name": "Wavecore",
+  "description": "Audio-reactive 3D visualiser — bass drives the pulse, mid drives the morph, treble drives the colour",
+  "theme_color": "#04050a",
+  "background_color": "#04050a",
+  "display": "standalone",
+  "start_url": "/",
+  "scope": "/",
+  "orientation": "any",
+  "icons": [
+    {
+      "src": "/icons/icon-192.png",
+      "sizes": "192x192",
+      "type": "image/png",
+      "purpose": "any maskable"
+    },
+    {
+      "src": "/icons/icon-512.png",
+      "sizes": "512x512",
+      "type": "image/png",
+      "purpose": "any maskable"
+    }
+  ],
+  "categories": ["music", "entertainment", "graphics"],
+  "screenshots": [],
+  "shortcuts": [
+    {
+      "name": "Open visualiser",
+      "short_name": "Visualiser",
+      "description": "Start the audio-reactive visualiser",
+      "url": "/",
+      "icons": [{ "src": "/icons/icon-192.png", "sizes": "192x192" }]
+    }
+  ]
+}

@@ -34,7 +34,7 @@ const config: Config = {
           DEFAULT: "#f2f4f8",
           muted: "#9aa1b1",
           faint: "#5d6474",
-          ghost: "#3a4050",
+          ghost: "#6b7280", // lightened for WCAG AA contrast on ink-950
         },
         signal: "rgb(var(--signal-rgb) / <alpha-value>)",
       },

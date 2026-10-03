@@ -8,7 +8,8 @@ export type DemoTrack = {
   bpm: number;
   key: string;
   mood: string;
-  src: string;
+  src: string;         // primary (compressed OGG)
+  srcFallback: string; // fallback (WAV)
   /** Seconds. */
   duration: number;
 };
@@ -21,7 +22,8 @@ export const DEMO_TRACKS: DemoTrack[] = [
     "bpm": 124,
     "key": "F minor",
     "mood": "Peak-time techno · tight 4/4 · sub-heavy",
-    "src": "/tracks/subsurface.wav",
+    "src": "/tracks/subsurface.ogg",
+    "srcFallback": "/tracks/subsurface.wav",
     "duration": 41.7
   },
   {
@@ -31,7 +33,8 @@ export const DEMO_TRACKS: DemoTrack[] = [
     "bpm": 84,
     "key": "D dorian",
     "mood": "Beatless intro · downtempo · wide pads",
-    "src": "/tracks/ion-drift.wav",
+    "src": "/tracks/ion-drift.ogg",
+    "srcFallback": "/tracks/ion-drift.wav",
     "duration": 44
   },
   {
@@ -41,7 +44,8 @@ export const DEMO_TRACKS: DemoTrack[] = [
     "bpm": 146,
     "key": "A minor",
     "mood": "Breakbeat · dense arps · brightest highs",
-    "src": "/tracks/chromagrid.wav",
+    "src": "/tracks/chromagrid.ogg",
+    "srcFallback": "/tracks/chromagrid.wav",
     "duration": 42.5
   }
 ];

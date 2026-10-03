@@ -7,6 +7,11 @@ import { ChromeLayer } from "./ui/ChromeLayer";
 import { AuroraOverlay } from "./ui/AuroraOverlay";
 import { DecodeOverlay } from "./ui/DecodeOverlay";
 import { DropOverlay } from "./ui/DropOverlay";
+import { ErrorBoundary } from "./ui/ErrorBoundary";
+import { InstallPrompt } from "./ui/InstallPrompt";
+import { SWRegister } from "./ui/SWRegister";
+import { TouchGestures } from "./ui/TouchGestures";
+import { WavecoreLoading } from "./ui/WavecoreLoading";
 
 /**
  * The whole experience, and the boundary between the two halves of this
@@ -25,7 +30,7 @@ import { DropOverlay } from "./ui/DropOverlay";
  */
 const WavecoreCanvas = dynamic(
   () => import("./scene/WavecoreCanvas").then((m) => m.WavecoreCanvas),
-  { ssr: false },
+  { ssr: false, loading: () => <WavecoreLoading /> },
 );
 
 export function WavecoreExperience() {
@@ -33,11 +38,16 @@ export function WavecoreExperience() {
     <AudioProvider>
       <ChromeProvider>
         <main className="relative h-[100dvh] w-screen overflow-hidden bg-ink-950">
-          <WavecoreCanvas />
+          <ErrorBoundary>
+            <WavecoreCanvas />
+          </ErrorBoundary>
+          <TouchGestures />
           <AuroraOverlay />
           <ChromeLayer />
           <DropOverlay />
           <DecodeOverlay />
+          <SWRegister />
+          <InstallPrompt />
         </main>
       </ChromeProvider>
     </AudioProvider>
