@@ -3,6 +3,7 @@
 import { useFrame, useThree } from "@react-three/fiber";
 import { useEffect, useRef } from "react";
 import * as THREE from "three";
+import { reducedMotion } from "@/lib/motion";
 import { reactive } from "@/lib/audio/reactive";
 import { clamp, smoothing } from "@/lib/utils";
 
@@ -90,10 +91,14 @@ export function CameraRig() {
 
   useFrame((_, delta) => {
     const dt = Math.min(delta, 1 / 20);
+    // prefers-reduced-motion: keep the slow orbit so the frame isn't static,
+    // but drop every aggressive movement — the punch zoom, the per-frame
+    // shake, the bass bounce and the reactive speed-up all go.
+    const calm = reducedMotion.value;
 
     // Drift speeds up when the mid band is busy — a dense passage visibly
     // energises the camera, not just the geometry.
-    orbit.current.theta += dt * (0.058 + reactive.mid * 0.16);
+    orbit.current.theta += dt * (calm ? 0.058 : 0.058 + reactive.mid * 0.16);
 
     // User offsets bleed back to centre.
     const decay = smoothing(9000, dt);
@@ -101,7 +106,7 @@ export function CameraRig() {
     user.current.pitch += (0 - user.current.pitch) * decay;
     user.current.zoom += (0 - user.current.zoom) * decay;
 
-    const punch = reactive.punch;
+    const punch = calm ? 0 : reactive.punch;
     const theta = orbit.current.theta + user.current.yaw;
     const phi =
       BASE_PHI + Math.sin(reactive.clock * 0.09) * 0.16 + user.current.pitch;
@@ -130,7 +135,7 @@ export function CameraRig() {
     const sinPhi = Math.sin(phi);
     camera.position.set(
       Math.sin(theta) * sinPhi * distance + shaking.current.x,
-      Math.cos(phi) * distance + shaking.current.y + reactive.bass * 0.12,
+      Math.cos(phi) * distance + shaking.current.y + (calm ? 0 : reactive.bass * 0.12),
       Math.cos(theta) * sinPhi * distance,
     );
 
@@ -142,7 +147,7 @@ export function CameraRig() {
       0,
     );
 
-    const targetFov = BASE_FOV + punch * 3.2 + reactive.level * 1.6;
+    const targetFov = BASE_FOV + punch * 3.2 + (calm ? 0 : reactive.level * 1.6);
     if (Math.abs(camera.fov - targetFov) > 0.001) {
       camera.fov = targetFov;
       camera.updateProjectionMatrix();

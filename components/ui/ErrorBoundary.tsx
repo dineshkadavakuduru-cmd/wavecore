@@ -20,7 +20,9 @@ export class ErrorBoundary extends Component<Props, State> {
   }
 
   componentDidCatch(error: Error, errorInfo: ErrorInfo): void {
-    console.error("[Wavecore] ErrorBoundary caught:", error, errorInfo);
+    if (process.env.NODE_ENV !== "production") {
+      console.error("[Wavecore] ErrorBoundary caught:", error, errorInfo);
+    }
   }
 
   handleReload = (): void => {
@@ -72,7 +74,7 @@ export class ErrorBoundary extends Component<Props, State> {
             >
               Reload
             </button>
-            {this.state.error && (
+            {process.env.NODE_ENV !== "production" && this.state.error && (
               <details className="mt-6 text-left">
                 <summary className="font-mono text-2xs uppercase text-chalk-ghost cursor-pointer">
                   Error details

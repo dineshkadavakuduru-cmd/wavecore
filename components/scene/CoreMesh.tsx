@@ -3,6 +3,7 @@
 import { useFrame } from "@react-three/fiber";
 import { useEffect, useMemo, useRef } from "react";
 import * as THREE from "three";
+import { reducedMotion } from "@/lib/motion";
 import { reactive } from "@/lib/audio/reactive";
 import type { QualitySettings } from "@/lib/quality";
 import { coreFragmentShader, coreVertexShader } from "./shaders/core";
@@ -76,25 +77,33 @@ export function CoreMesh({ quality }: { quality: QualitySettings }) {
 
     // Mid drives how deep the noise is allowed to bite, so the silhouette
     // changes character between a pad-heavy and a drum-heavy section.
-    u.uMorph.value = 0.12 + reactive.mid * 0.32;
+    // Reduced motion halves that bite range.
+    u.uMorph.value = reducedMotion.value
+      ? 0.12 + reactive.mid * 0.14
+      : 0.12 + reactive.mid * 0.32;
     // Treble opens the noise field up slightly — busier surface detail.
-    u.uNoiseScale.value = 1.7 + reactive.treble * 0.9;
+    u.uNoiseScale.value = 1.7 + reactive.treble * (reducedMotion.value ? 0.3 : 0.9);
     // Bass enlarges the whole body a touch beyond the shader-side pulse, so the
     // mass reads as heavier rather than just spikier. The ease-out cubic is the
     // mount reveal — the core grows into place rather than popping in.
+    // Reduced motion keeps that tiny breathing but drops the reactive swell.
     const reveal = easeOutCubic(reactive.clock / 2.4);
-    u.uRadius.value =
-      (0.95 + reactive.bass * 0.14 + reactive.punch * 0.05) * (0.42 + reveal * 0.58);
+    u.uRadius.value = reducedMotion.value
+      ? (0.95 + reactive.bass * 0.03) * (0.42 + reveal * 0.58)
+      : (0.95 + reactive.bass * 0.14 + reactive.punch * 0.05) * (0.42 + reveal * 0.58);
 
     // Mid drives rotation speed — a fast passage visibly spins the core up.
-    spin.current += dt * (0.05 + reactive.mid * 0.42 + reactive.treble * 0.1);
+    // Reduced motion holds rotation at its floor speed.
+    spin.current += reducedMotion.value
+      ? dt * 0.05
+      : dt * (0.05 + reactive.mid * 0.42 + reactive.treble * 0.1);
     mesh.rotation.y = spin.current;
     // Slow independent tilt, so the axis is never static.
-    tilt.current += dt * (0.012 + reactive.mid * 0.06);
-    mesh.rotation.x = Math.sin(tilt.current * 2.1) * 0.24 + reactive.bass * 0.07;
+    tilt.current += reducedMotion.value ? dt * 0.012 : dt * (0.012 + reactive.mid * 0.06);
+    mesh.rotation.x = Math.sin(tilt.current * 2.1) * 0.24 + (reducedMotion.value ? 0 : reactive.bass * 0.07);
     mesh.rotation.z = Math.cos(tilt.current * 1.4) * 0.1;
 
-    const scale = 1 + reactive.punch * 0.035;
+    const scale = reducedMotion.value ? 1 : 1 + reactive.punch * 0.035;
     mesh.scale.setScalar(scale);
   });
 

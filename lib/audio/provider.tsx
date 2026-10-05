@@ -44,13 +44,17 @@ export type AudioApi = {
   decode: DecodeState;
   error: string | null;
   quality: QualitySettings;
+  micActive: boolean;
   selectDemo: (track: DemoTrack, autoplay?: boolean) => void;
   selectUpload: (file: File) => Promise<void>;
   toggle: () => void;
   pause: () => void;
+  stop: () => void;
   seek: (time: number) => void;
   setVolume: (v: number) => void;
   step: (direction: 1 | -1) => void;
+  enableMic: () => Promise<void>;
+  stopMic: () => void;
   retry: () => void;
   clearError: () => void;
   reportSlowFrameBudget: () => void;
@@ -180,6 +184,7 @@ export function AudioProvider({ children }: { children: ReactNode }) {
   }, [engine]);
 
   const pause = useCallback(() => engine.pause(), [engine]);
+  const stop = useCallback(() => engine.stop(), [engine]);
   const seek = useCallback((time: number) => engine.seek(time), [engine]);
   const retry = useCallback(() => {
     setError(null);
@@ -194,6 +199,20 @@ export function AudioProvider({ children }: { children: ReactNode }) {
     },
     [engine],
   );
+
+  // Mic state mirrors the engine, which re-renders this provider through the
+  // same subscription every transport state change lives on.
+  const enableMic = useCallback(async () => {
+    setError(null);
+    try {
+      await engine.enableMic();
+    } catch (err) {
+      setError(err instanceof Error ? err.message : "The microphone could not be started.");
+      throw err;
+    }
+  }, [engine]);
+  const stopMic = useCallback(() => engine.stopMic(), [engine]);
+  const micActive = engine.micActive;
 
   const step = useCallback(
     (direction: 1 | -1) => {
@@ -235,13 +254,17 @@ export function AudioProvider({ children }: { children: ReactNode }) {
       decode,
       error,
       quality: QUALITY[tier],
+      micActive,
       selectDemo,
       selectUpload,
       toggle,
       pause,
+      stop,
       seek,
       setVolume,
       step,
+      enableMic,
+      stopMic,
       retry,
       clearError,
       reportSlowFrameBudget,
@@ -253,13 +276,17 @@ export function AudioProvider({ children }: { children: ReactNode }) {
       decode,
       error,
       tier,
+      micActive,
       selectDemo,
       selectUpload,
       toggle,
       pause,
+      stop,
       seek,
       setVolume,
       step,
+      enableMic,
+      stopMic,
       retry,
       clearError,
       reportSlowFrameBudget,

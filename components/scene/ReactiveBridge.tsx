@@ -3,6 +3,7 @@
 import { useFrame } from "@react-three/fiber";
 import { useEffect, useRef } from "react";
 import { useAudio } from "@/lib/audio/provider";
+import { reducedMotion, REDUCED_MOTION_QUERY } from "@/lib/motion";
 import { reactive, smoothedSpectrum, updateReactive } from "@/lib/audio/reactive";
 
 /**
@@ -51,6 +52,18 @@ export function ReactiveBridge({ onSlowFps, watchFps }: Props) {
     // The eased spectrum the particle shader samples, exposed so the band
     // mapping can be inspected without instrumenting the shader.
     seam.__wavecoreSpectrum = smoothedSpectrum;
+  }, []);
+
+  // Live-updates the reduced-motion preference so every frame loop in the
+  // scene can honour it without touching React state.
+  useEffect(() => {
+    const query = window.matchMedia(REDUCED_MOTION_QUERY);
+    const apply = () => {
+      reducedMotion.value = query.matches;
+    };
+    apply();
+    query.addEventListener("change", apply);
+    return () => query.removeEventListener("change", apply);
   }, []);
 
   useFrame((_, delta) => {

@@ -31,12 +31,16 @@ export function WavecoreCanvas() {
 
     const onContextLost = (event: Event) => {
       event.preventDefault();
-      console.warn("[Wavecore] WebGL context lost");
+      if (process.env.NODE_ENV !== "production") {
+        console.warn("[Wavecore] WebGL context lost");
+      }
       setContextLost(true);
     };
 
     const onContextRestored = () => {
-      console.log("[Wavecore] WebGL context restored");
+      if (process.env.NODE_ENV !== "production") {
+        console.log("[Wavecore] WebGL context restored");
+      }
       setContextLost(false);
       // The renderer will automatically attempt to restore; we just clear the
       // error state. The scene will re-initialize on the next frame.

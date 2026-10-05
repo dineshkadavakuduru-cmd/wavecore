@@ -1,11 +1,11 @@
 "use client";
 
 import { AnimatePresence, motion } from "motion/react";
-import { useRef } from "react";
+import { useRef, useState } from "react";
 import { useAudio } from "@/lib/audio/provider";
 import { useChrome } from "@/lib/chrome";
 import { cn, formatTime } from "@/lib/utils";
-import { CloseIcon, PlayIcon, UploadIcon } from "./icons";
+import { CloseIcon, MicIcon, PlayIcon, UploadIcon } from "./icons";
 
 /**
  * Source drawer: bundled tracks on top, upload underneath.
@@ -25,9 +25,13 @@ export function SourcePanel() {
     error,
     clearError,
     decode,
+    micActive,
+    enableMic,
+    stopMic,
   } = useAudio();
   const { panelOpen, setPanelOpen, zen } = useChrome();
   const fileInputRef = useRef<HTMLInputElement>(null);
+  const [micRequesting, setMicRequesting] = useState(false);
 
   const open = panelOpen && !zen;
   const busy = decode.phase !== "idle";
@@ -38,6 +42,19 @@ export function SourcePanel() {
     void selectUpload(file).catch(() => {
       /* error state is surfaced by the provider */
     });
+  };
+
+  const handleMic = () => {
+    if (micActive) {
+      stopMic();
+      return;
+    }
+    setMicRequesting(true);
+    enableMic()
+      .catch(() => {
+        /* error state is surfaced by the provider */
+      })
+      .finally(() => setMicRequesting(false));
   };
 
   return (
@@ -138,6 +155,55 @@ export function SourcePanel() {
                 })}
               </ul>
 
+              {/* ── microphone ───────────────────────────────────────── */}
+              <div className="mt-5 px-2">
+                <div className="label-micro mb-2 text-chalk-ghost">Live input</div>
+
+                <button
+                  type="button"
+                  onClick={handleMic}
+                  disabled={busy}
+                  className={cn(
+                    "group flex w-full items-center gap-3 rounded-xl border px-4 py-3.5 text-left",
+                    "transition-colors duration-300",
+                    micActive
+                      ? "border-signal/40 bg-signal/[0.08]"
+                      : "border-white/12 hover:border-white/25 hover:bg-white/[0.03]",
+                    "disabled:cursor-progress disabled:opacity-50",
+                  )}
+                >
+                  <MicIcon
+                    className={cn(
+                      "h-5 w-5 shrink-0 transition-colors",
+                      micActive ? "text-signal" : "text-chalk-faint group-hover:text-chalk",
+                    )}
+                  />
+                  <span className="min-w-0 flex-1">
+                    <span className="block text-sm text-chalk-muted group-hover:text-chalk">
+                      {micRequesting
+                        ? "Waiting for permission…"
+                        : micActive
+                          ? "Listening — tap to stop"
+                          : "Use your microphone"}
+                    </span>
+                    <span className="mt-0.5 block text-2xs uppercase tracking-[0.1em] text-chalk-ghost">
+                      {micActive ? "the scene reacts to the room" : "react to sound around you"}
+                    </span>
+                  </span>
+                  {micActive && (
+                    <span className="h-2 w-2 shrink-0 animate-pulse rounded-full bg-signal" aria-hidden="true" />
+                  )}
+                </button>
+
+                <p className="mt-2 text-2xs leading-relaxed text-chalk-ghost">
+                  The visualiser can react to sound picked up by your microphone.
+                  Pressing the button makes your browser ask for permission first.
+                  Audio is analysed locally in real time — it is never recorded,
+                  stored, or sent anywhere. Starting the mic stops any playing
+                  track, and stops the mic again to return to it.
+                </p>
+              </div>
+
               {/* ── upload ─────────────────────────────────────────── */}
               <div className="mt-5 px-2">
                 <div className="label-micro mb-2 text-chalk-ghost">Your file</div>
@@ -215,6 +281,7 @@ export function SourcePanel() {
             <footer className="border-t border-white/[0.07] px-5 py-3.5">
               <div className="flex flex-wrap gap-x-4 gap-y-1.5 font-mono text-2xs uppercase text-chalk-ghost">
                 <Shortcut k="Space" label="play" />
+                <Shortcut k="S" label="stop" />
                 <Shortcut k="← →" label="seek" />
                 <Shortcut k="1–3" label="tracks" />
                 <Shortcut k="H" label="hide ui" />

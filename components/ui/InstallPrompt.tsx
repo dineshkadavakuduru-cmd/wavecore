@@ -57,9 +57,9 @@ export function InstallPrompt() {
     const { outcome } = await deferredPrompt.userChoice;
 
     if (outcome === "accepted") {
-      console.log("[PWA] User accepted install");
+      if (process.env.NODE_ENV !== "production") console.log("[PWA] User accepted install");
     } else {
-      console.log("[PWA] User dismissed install");
+      if (process.env.NODE_ENV !== "production") console.log("[PWA] User dismissed install");
     }
 
     // Clear the prompt either way

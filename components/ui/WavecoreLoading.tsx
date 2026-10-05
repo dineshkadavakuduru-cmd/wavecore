@@ -1,10 +1,18 @@
 "use client";
 
-/**
- * Loading indicator shown while the WavecoreCanvas dynamic import resolves.
- * Centered, minimal, uses the design system tokens.
- */
+"use client";
+
+import { useEffect, useState } from "react";
+
+/** Loading indicator shown while the WavecoreCanvas dynamic import resolves. */
 export function WavecoreLoading() {
+  const [takingLong, setTakingLong] = useState(false);
+
+  useEffect(() => {
+    const timeout = window.setTimeout(() => setTakingLong(true), 12_000);
+    return () => window.clearTimeout(timeout);
+  }, []);
+
   return (
     <div
       className="absolute inset-0 grid place-items-center bg-ink-950"
@@ -46,9 +54,27 @@ export function WavecoreLoading() {
             }}
           />
         </div>
-        <p className="font-mono text-2xs uppercase tracking-[0.14em] text-chalk-ghost">
-          Initializing&hellip;
-        </p>
+        {takingLong ? (
+          <div className="max-w-xs text-center">
+            <p className="font-mono text-2xs uppercase tracking-[0.14em] text-chalk-ghost">
+              The 3D scene is taking longer than expected.
+            </p>
+            <p className="mt-2 text-xs leading-relaxed text-chalk-faint">
+              WebGL may be unavailable or the scene bundle may have failed to load.
+            </p>
+            <button
+              type="button"
+              onClick={() => window.location.reload()}
+              className="chrome-btn mt-4 px-4 py-2 text-xs"
+            >
+              Retry
+            </button>
+          </div>
+        ) : (
+          <p className="font-mono text-2xs uppercase tracking-[0.14em] text-chalk-ghost">
+            Initializing&hellip;
+          </p>
+        )}
       </div>
     </div>
   );

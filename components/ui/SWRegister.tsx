@@ -36,7 +36,9 @@ export function SWRegister() {
         // Check for updates periodically
         setInterval(() => registration.update(), 60 * 60 * 1000); // every hour
       } catch (err) {
-        console.warn("[SW] Registration failed:", err);
+        // Intentionally silent: a failed SW registration must never surface
+        // as console noise for real users.
+        if (process.env.NODE_ENV !== "production") console.warn("[SW] Registration failed:", err);
       }
     };
 

@@ -105,3 +105,13 @@ export function UploadIcon({ className }: IconProps) {
     </svg>
   );
 }
+
+export function MicIcon({ className }: IconProps) {
+  return (
+    <svg {...base} className={className} aria-hidden="true">
+      <rect x="9.25" y="3.5" width="5.5" height="10" rx="2.75" />
+      <path d="M6.5 11.5a5.5 5.5 0 0 0 11 0" />
+      <path d="M12 17v3.5" />
+    </svg>
+  );
+}

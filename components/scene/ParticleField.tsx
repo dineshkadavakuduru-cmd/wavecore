@@ -3,6 +3,7 @@
 import { useFrame } from "@react-three/fiber";
 import { useEffect, useMemo, useRef } from "react";
 import * as THREE from "three";
+import { reducedMotion } from "@/lib/motion";
 import { reactive, SPECTRUM_SIZE, spectrumBytes } from "@/lib/audio/reactive";
 import type { QualitySettings } from "@/lib/quality";
 import { particleFragmentShader, particleVertexShader } from "./shaders/particles";
@@ -165,9 +166,11 @@ export function ParticleField({ quality }: { quality: QualitySettings }) {
     u.uTreble.value = reactive.treble;
     u.uLevel.value = reactive.level;
     u.uHue.value = reactive.hue;
-    u.uPunch.value = reactive.punch;
+    u.uPunch.value = reducedMotion.value ? 0 : reactive.punch;
     // Spectrum-driven expansion — the loudest part of the field pushes furthest.
-    u.uBurst.value = 0.7 + reactive.bass * 0.8 + reactive.level * 0.35;
+    u.uBurst.value = reducedMotion.value
+      ? 0.7 + reactive.bass * 0.3 + reactive.level * 0.12
+      : 0.7 + reactive.bass * 0.8 + reactive.level * 0.35;
 
     // Point size must be in device pixels: size / -mvPosition.z means the scale
     // factor has to account for both viewport height and DPR, or the field
@@ -179,7 +182,9 @@ export function ParticleField({ quality }: { quality: QualitySettings }) {
       ((height * dpr) / (2 * Math.tan((fov * Math.PI) / 360))) * 0.011;
 
     // Idle drift is slower and calmer than the playing state.
-    u.uDrift.value = 1 - reactive.ambient * 0.45;
+    u.uDrift.value = reducedMotion.value
+      ? 0.65
+      : 1 - reactive.ambient * 0.45;
     // Mount reveal: the field expands outward from the core over ~3 s.
     u.uReveal.value = easeOutCubic(reactive.clock / 3.0);
   });

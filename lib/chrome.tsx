@@ -57,7 +57,7 @@ export function useChrome() {
 }
 
 export function ChromeProvider({ children }: { children: ReactNode }) {
-  const { toggle, seek, setVolume, volume, selectDemo, tracks, engine } = useAudio();
+  const { toggle, stop, seek, setVolume, volume, selectDemo, tracks, engine } = useAudio();
 
   const [visible, setVisible] = useState(true);
   const [zen, setZenState] = useState(false);
@@ -277,6 +277,12 @@ export function ChromeProvider({ children }: { children: ReactNode }) {
           setVolume(volume > 0 ? 0 : 0.8);
           reveal();
           return;
+        case "s":
+        case "S":
+          e.preventDefault();
+          stop();
+          reveal();
+          return;
         case "Escape":
           if (zen) {
             e.preventDefault();
@@ -306,6 +312,7 @@ export function ChromeProvider({ children }: { children: ReactNode }) {
     selectDemo,
     setVolume,
     setZen,
+    stop,
     toggle,
     toggleFullscreen,
     tracks,

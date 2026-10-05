@@ -361,6 +361,18 @@ export class AudioEngine {
   private playable: Playable | null = null;
   private volume = 0.8;
 
+  /* ── microphone state ──────────────────────────────────────────────────
+     The mic deliberately gets a different route from playback: its source
+     connects straight into the analyser, and the analyser's own output link
+     to the speakers is severed for as long as the mic is live. Routing the
+     mic through inputGain would sum it with the music bus and, worse, feed
+     it straight back out of the speakers — an instant feedback howl. */
+  private micStream: MediaStream | null = null;
+  private micSource: MediaStreamAudioSourceNode | null = null;
+  private micGain: GainNode | null = null;
+  /** Whether the analyser is currently wired through to the speakers. */
+  private analyserRouted = false;
+
   /** Scratch buffer for `getByteFrequencyData`, allocated once. */
   scratch: FrequencyScratch | null = null;
 
@@ -412,6 +424,7 @@ export class AudioEngine {
     inputGain.connect(analyser);
     analyser.connect(volumeGain);
     volumeGain.connect(ctx.destination);
+    this.analyserRouted = true;
 
     this.ctx = ctx;
     this.analyserNode = analyser;
@@ -475,6 +488,7 @@ export class AudioEngine {
   /** Load and select a bundled demo track. Does not start playback. */
   loadDemo(track: DemoTrack) {
     const ctx = this.ensureGraph();
+    this.stopMic();
     const playable = this.ensureElement(ctx);
     // Only tear down the outgoing playable if it isn't the shared element.
     if (this.playable && this.playable !== playable) this.playable.destroy();
@@ -487,6 +501,7 @@ export class AudioEngine {
   /** Select a freshly decoded upload. Does not start playback. */
   loadUpload(result: UploadResult) {
     const ctx = this.ensureGraph();
+    this.stopMic();
     this.playable?.destroy();
     this.playable = new BufferPlayable(
       ctx,
@@ -501,6 +516,87 @@ export class AudioEngine {
   async decodeUpload(file: File, handlers: DecodeHandlers = {}) {
     const ctx = this.ensureGraph();
     return decodeFile(ctx, file, handlers);
+  }
+
+  /* ── microphone ────────────────────────────────────────────────────── */
+
+  get micActive() {
+    return this.micStream !== null;
+  }
+
+  /**
+   * Route the microphone into the analyser. Playback is stopped first — the
+   * two sources are mutually exclusive, and letting both run would also mean
+   * the mic picking up the speakers. Resolves once live; rejects with the
+   * original permission/ acquisition error so the UI can explain it.
+   */
+  async enableMic() {
+    if (this.micActive) return;
+    if (!navigator.mediaDevices?.getUserMedia) {
+      throw new Error("Microphone input requires a secure connection (HTTPS) and a supported browser.");
+    }
+    const ctx = this.ensureGraph();
+
+    let stream: MediaStream;
+    try {
+      stream = await navigator.mediaDevices.getUserMedia({
+        audio: {
+          // The analyser wants the room as it is — browser DSP flattens the
+          // frequency content the visualiser is trying to read.
+          echoCancellation: false,
+          noiseSuppression: false,
+          autoGainControl: false,
+        },
+      });
+    } catch (err) {
+      if (err instanceof DOMException && err.name === "NotFoundError") {
+        throw new Error("No microphone was found on this device.");
+      }
+      if (err instanceof DOMException && err.name === "NotAllowedError") {
+        throw new Error("Microphone access was denied. Allow it in the browser's site settings to use this.");
+      }
+      throw err instanceof Error ? err : new Error("The microphone could not be started.");
+    }
+
+    // Permission granted — now it's safe to stop playback and re-route.
+    this.playable?.pause();
+
+    if (this.analyserRouted && this.analyserNode) {
+      this.analyserNode.disconnect();
+      this.analyserRouted = false;
+    }
+
+    this.micStream = stream;
+    this.micSource = ctx.createMediaStreamSource(stream);
+    // A gain stage between source and analyser keeps the gain structure
+    // inspectable without changing level; 1 is neutral.
+    this.micGain = ctx.createGain();
+    this.micGain.gain.value = 1;
+    this.micSource.connect(this.micGain);
+    this.micGain.connect(this.analyserNode!);
+
+    if (ctx.state === "suspended") void ctx.resume();
+    reactive.mode = "playing";
+    this.emit();
+  }
+
+  /** Tear the mic down: nodes disconnected, tracks released, speakers restored. */
+  stopMic() {
+    if (!this.micStream) return;
+    this.micSource?.disconnect();
+    this.micGain?.disconnect();
+    this.micSource = null;
+    this.micGain = null;
+    for (const track of this.micStream.getTracks()) track.stop();
+    this.micStream = null;
+
+    if (!this.analyserRouted && this.analyserNode && this.volumeGain) {
+      this.analyserNode.connect(this.volumeGain);
+      this.analyserRouted = true;
+    }
+
+    reactive.mode = this.playable ? "paused" : "idle";
+    this.emit();
   }
 
   /* ── transport ────────────────────────────────────────────────────── */
@@ -546,6 +642,15 @@ export class AudioEngine {
     this.emit();
   }
 
+  /** Full stop: pause and rewind to the start. The mic is unaffected. */
+  stop() {
+    if (this.micActive) return;
+    this.playable?.pause();
+    this.playable?.seek(0);
+    if (reactive.mode !== "idle") reactive.mode = "paused";
+    this.emit();
+  }
+
   async toggle() {
     if (this.isPlaying) this.pause();
     else await this.play();
@@ -558,6 +663,10 @@ export class AudioEngine {
 
   /** Called when the tab regains focus — resync the mode with the real state. */
   syncMode() {
+    if (this.micActive) {
+      reactive.mode = "playing";
+      return;
+    }
     if (!this.playable) {
       reactive.mode = "idle";
       return;
@@ -582,13 +691,20 @@ export class AudioEngine {
   }
 
   dispose() {
+    this.stopMic();
     this.playable?.destroy();
     this.elementPlayable?.dispose();
     this.elementSource?.disconnect();
+    this.inputGain?.disconnect();
+    this.analyserNode?.disconnect();
+    this.volumeGain?.disconnect();
     this.listeners.clear();
     void this.ctx?.close();
     this.ctx = null;
     this.analyserNode = null;
+    this.inputGain = null;
+    this.volumeGain = null;
+    this.analyserRouted = false;
   }
 }
 
