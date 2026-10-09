@@ -82,7 +82,12 @@ function serverTier(): QualityTier {
 
 export function AudioProvider({ children }: { children: ReactNode }) {
   const engine = useMemo(() => getAudioEngine(), []);
-  const [, rerender] = useReducer((n: number) => n + 1, 0);
+  // Generation counter bumped on every engine emission. It has to exist
+  // because the api object below is memoized: pause / stop / track-end / mic
+  // transitions change no React state, and without a changing dep the memo
+  // would keep serving the previous transport snapshot forever — the engine
+  // and the reactive bus would move on while the UI stayed frozen.
+  const [transportRev, bumpTransportRev] = useReducer((n: number) => n + 1, 0);
 
   const [source, setSource] = useState<Source | null>(null);
   const [volume, setVolumeState] = useState(0.8);
@@ -108,8 +113,9 @@ export function AudioProvider({ children }: { children: ReactNode }) {
 
   // Re-render whenever the engine reports a state transition (play / pause /
   // load / seek / metadata / ended). Per-frame audio data never comes through
-  // here — that lives in `reactive` and is read inside the render loop.
-  useEffect(() => engine.subscribe(rerender), [engine]);
+  // here — that lives in `reactive` and is read inside the render loop. The
+  // bump (not a bare re-render) is what invalidates the memoized api object.
+  useEffect(() => engine.subscribe(() => bumpTransportRev()), [engine]);
 
   // Keep the reactive bus's notion of "playing" honest when the tab is restored
   // or the browser suspends media on its own.
@@ -269,6 +275,9 @@ export function AudioProvider({ children }: { children: ReactNode }) {
       clearError,
       reportSlowFrameBudget,
     }),
+    // transportRev is invalidation-only: it never appears in the object, but
+    // every engine emission bumps it so the snapshot above is recomputed.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
     [
       engine,
       source,
@@ -277,6 +286,7 @@ export function AudioProvider({ children }: { children: ReactNode }) {
       error,
       tier,
       micActive,
+      transportRev,
       selectDemo,
       selectUpload,
       toggle,

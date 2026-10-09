@@ -13,6 +13,7 @@
     "ci": "npm run typecheck && npm run lint && npm run test",
     "qa": "node scripts/qa.mjs",
     "perf": "node scripts/perf.mjs",
+    "verify:live": "node scripts/verify-live.mjs",
     "gen:tracks": "node scripts/generate-tracks.mjs",
     "gen:icons": "node scripts/generate-icons.mjs"
   },
