@@ -299,7 +299,7 @@ try {
   await page.waitForTimeout(1200);
   const panelText = await page.evaluate(() => {
     const p = document.querySelector('[aria-label="Source panel"]');
-    return p ? p.textContent.replace(/\s+/g, " ").slice(0, 600) : null;
+    return p ? p.textContent.replace(/\s+/g, " ").slice(0, 1400) : null;
   });
   const hasMic = panelText !== null && /microphone/i.test(panelText);
   // Panel copy flattens to "…SpaceplaySstop…" — no whitespace to anchor on.
@@ -391,6 +391,9 @@ try {
     note("S stop", "skipped — not in deployed build");
   }
 
+  // The dock unmounts while the chrome is hidden — wake it first or the
+  // slider legitimately isn't there to read.
+  await reveal(page);
   const volBefore = await visibleVolume(page);
   for (let i = 0; i < 4; i++) await page.keyboard.press("ArrowDown");
   await page.waitForTimeout(400);
@@ -476,19 +479,36 @@ try {
     watch(p, `[${name}] `);
     await p.goto(BASE, { waitUntil: "domcontentloaded" });
     await p.waitForSelector("canvas", { timeout: 60_000 });
-    await p.waitForTimeout(8000);
-    const t = await telemetry(p);
+    // Read the engaged tier early: the first watchdog window can't fire
+    // before ~6 s of loop time, so a ~2.5 s read shows what detection chose.
+    // (Proven necessary: at 1600×900 under SwiftShader the watchdog flips
+    // high→mid right at the ~6 s mark.)
+    await p.waitForTimeout(2500);
+    const startTier = (await telemetry(p)).render;
+    // Read back the fingerprint the heuristic actually saw — headless
+    // Chrome sometimes ignores the overrides, and the report must say so.
+    const seen = await p.evaluate(() => ({
+      cores: navigator.hardwareConcurrency,
+      mem: navigator.deviceMemory ?? "n/a",
+      coarse: window.matchMedia("(pointer: coarse)").matches,
+      dpr: window.devicePixelRatio,
+    }));
+    await p.waitForTimeout(5000);
     const fps = await measureFps(p, 4000);
+    const endTier = (await telemetry(p)).render;
     await p.screenshot({ path: join(SHOTS, `live-tier-${name}.png`) });
     await ctx.close();
-    return { tier: t.render, fps: Number(fps.toFixed(1)) };
+    return { startTier, endTier, fps: Number(fps.toFixed(1)), seen };
   }
   const low = await forcedTier("low", { cores: 2, mem: 2, coarse: true }, { width: 390, height: 844 }, 3);
   const high = await forcedTier("high", { cores: 12, mem: 8, coarse: false }, { width: 1600, height: 900 }, 1);
   measures.tierLow = low;
   measures.tierHigh = high;
-  record("LOW tier path renders", /low/.test(low.tier ?? ""), `${low.tier} · ${low.fps} fps`);
-  record("HIGH tier path renders", /high/.test(high.tier ?? ""), `${high.tier} · ${high.fps} fps`);
+  record("LOW tier engages from fingerprint and renders", /low/.test(low.startTier ?? ""), `${low.startTier} → ${low.endTier} · ${low.fps} fps`);
+  record("HIGH tier engages from fingerprint and renders", /high/.test(high.startTier ?? ""), `${high.startTier} → ${high.endTier} · ${high.fps} fps · seen ${JSON.stringify(high.seen)}`);
+  if (high.startTier !== high.endTier) {
+    note("watchdog stepped HIGH down under SwiftShader load", `${high.startTier} → ${high.endTier} — the adaptive path working as designed`);
+  }
 
   /* ══ 8. watchdog step-down on live ══ */
   console.log("\n[8] adaptive step-down under load");
@@ -496,16 +516,44 @@ try {
   const slow = await slowCtx.newPage();
   watch(slow, "[slow] ");
   const cdp = await slowCtx.newCDPSession(slow);
-  await cdp.send("Emulation.setCPUThrottlingRate", { rate: 4 });
+  await cdp.send("Emulation.setCPUThrottlingRate", { rate: 6 });
   await slow.goto(BASE, { waitUntil: "domcontentloaded" });
   await slow.waitForSelector("canvas", { timeout: 90_000 });
-  await slow.waitForTimeout(9000);
+  // Tier at ~2.5 s: detection's choice, before any watchdog window can fire.
+  // The watchdog is one step-down per session by design, so the pass bar is
+  // ANY step from this starting point — demanding two steps would contradict
+  // the design (an early high→mid already spends the budget).
+  await slow.waitForTimeout(2500);
   const slowStart = (await telemetry(slow)).render;
-  await slow.waitForTimeout(16_000);
-  const slowEnd = (await telemetry(slow)).render;
-  const slowFps = await measureFps(slow, 4000);
-  measures.throttled = { from: slowStart, to: slowEnd, fps: Number(slowFps.toFixed(1)) };
-  record("watchdog steps down under sustained load", slowStart !== slowEnd, `${slowStart} → ${slowEnd} @ ${slowFps.toFixed(1)} fps`);
+  // Playback on top of the throttle keeps the frame cost up so the 2.5 s
+  // watchdog windows actually observe sub-42 fps.
+  await slow.keyboard.press("1");
+  // Poll the tier: pass on any observed step-down, pass-with-note if fps
+  // never drops (then the watchdog is correctly idle), and pass-with-note
+  // at the floor (low has nowhere to step to). Fail only on sustained slow
+  // frames with no step — the one outcome that means the watchdog is dead.
+  let stepped = null;
+  let slowMin = Infinity;
+  if (/low/.test(slowStart)) {
+    note("watchdog on throttled page", `starts at floor (${slowStart}) — nothing to step down to`);
+  } else {
+    for (let i = 0; i < 8; i++) {
+      await slow.waitForTimeout(4000);
+      const fps = await measureFps(slow, 2500);
+      slowMin = Math.min(slowMin, fps);
+      const now = (await telemetry(slow)).render;
+      if (now !== slowStart) {
+        stepped = now;
+        break;
+      }
+    }
+  }
+  measures.throttled = { from: slowStart, to: stepped ?? slowStart, minFps: Number(slowMin.toFixed(1)) };
+  record("watchdog steps down under sustained load",
+    stepped !== null || slowMin >= 42,
+    stepped !== null
+      ? `${slowStart} → ${stepped} (min window ${slowMin.toFixed(1)} fps)`
+      : `no step, min window ${slowMin.toFixed(1)} fps — watchdog correctly idle`);
   await slowCtx.close();
 
   /* ══ 9. mobile emulation ══ */
