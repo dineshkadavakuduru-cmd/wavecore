@@ -210,8 +210,13 @@ export function ChromeProvider({ children }: { children: ReactNode }) {
     const onKeyDown = (e: KeyboardEvent) => {
       const target = e.target as HTMLElement | null;
       const tag = target?.tagName;
-      // Never hijack keys aimed at a slider, input or text field.
-      if (tag === "INPUT" || tag === "TEXTAREA" || target?.isContentEditable) return;
+      // Never hijack keys aimed at a text field. For range sliders (volume),
+      // only ignore the keys they actually handle (arrows, home, end, pg up/down).
+      // Space must always toggle playback globally.
+      const isTextInput = tag === "TEXTAREA" || target?.isContentEditable;
+      const isRangeInput = tag === "INPUT" && (target as HTMLInputElement)?.type === "range";
+      const keysRangeHandles = ["ArrowLeft", "ArrowRight", "ArrowUp", "ArrowDown", "Home", "End", "PageUp", "PageDown"];
+      if (isTextInput || (isRangeInput && keysRangeHandles.includes(e.key))) return;
 
       // Enter activates whatever control has focus. Preventing that here would
       // break the control. Without this guard, pressing Enter right after
