@@ -45,6 +45,8 @@ export type AudioApi = {
   error: string | null;
   quality: QualitySettings;
   micActive: boolean;
+  /** True when the browser has suspended the AudioContext and playback is muted. */
+  suspended: boolean;
   selectDemo: (track: DemoTrack, autoplay?: boolean) => void;
   selectUpload: (file: File) => Promise<void>;
   toggle: () => void;
@@ -78,6 +80,23 @@ function getClientTier(): QualityTier {
 }
 function serverTier(): QualityTier {
   return "high";
+}
+
+/**
+ * Shallow identity check over every field of the transport snapshot.
+ *
+ * Every value is either a primitive, a stable ref (the engine, the DEMO_TRACKS
+ * array, the useCallback'd actions) or an object that is only ever replaced when
+ * it genuinely changes (source / decode). So `===` on each key is enough, and a
+ * match means an engine emission changed nothing the UI can see.
+ */
+function shallowSameApi(a: AudioApi, b: AudioApi) {
+  const left = a as unknown as Record<string, unknown>;
+  const right = b as unknown as Record<string, unknown>;
+  for (const key in left) {
+    if (left[key] !== right[key]) return false;
+  }
+  return true;
 }
 
 export function AudioProvider({ children }: { children: ReactNode }) {
@@ -115,7 +134,31 @@ export function AudioProvider({ children }: { children: ReactNode }) {
   // load / seek / metadata / ended). Per-frame audio data never comes through
   // here — that lives in `reactive` and is read inside the render loop. The
   // bump (not a bare re-render) is what invalidates the memoized api object.
-  useEffect(() => engine.subscribe(() => bumpTransportRev()), [engine]);
+  // The same subscription drains a mid-session mic failure into `error` so a
+  // device unplugged while live doesn't fail silently.
+  useEffect(() => {
+    return engine.subscribe(() => {
+      bumpTransportRev();
+      const micErr = engine.takeMicError();
+      if (micErr) setError(micErr);
+    });
+  }, [engine]);
+
+  // The very first pointer/key gesture builds (and thus resumes) the graph.
+  // Attaching it once at the window level means an AudioContext can't be left
+  // born-suspended by an autoplay policy that only counts the first interaction.
+  useEffect(() => {
+    const unlock = () => {
+      engine.ensureGraph();
+      if (engine.contextState === "suspended") void engine.context?.resume();
+    };
+    window.addEventListener("pointerdown", unlock, { once: true, passive: true });
+    window.addEventListener("keydown", unlock, { once: true });
+    return () => {
+      window.removeEventListener("pointerdown", unlock);
+      window.removeEventListener("keydown", unlock);
+    };
+  }, [engine]);
 
   // Keep the reactive bus's notion of "playing" honest when the tab is restored
   // or the browser suspends media on its own.
@@ -248,8 +291,9 @@ export function AudioProvider({ children }: { children: ReactNode }) {
     });
   }, []);
 
-  const api = useMemo<AudioApi>(
-    () => ({
+  const apiCache = useRef<AudioApi | null>(null);
+  const api = useMemo<AudioApi>(() => {
+    const next: AudioApi = {
       engine,
       tracks: DEMO_TRACKS,
       source,
@@ -261,6 +305,7 @@ export function AudioProvider({ children }: { children: ReactNode }) {
       error,
       quality: QUALITY[tier],
       micActive,
+      suspended: engine.contextState === "suspended",
       selectDemo,
       selectUpload,
       toggle,
@@ -274,12 +319,22 @@ export function AudioProvider({ children }: { children: ReactNode }) {
       retry,
       clearError,
       reportSlowFrameBudget,
-    }),
+    };
+    // The engine emits for every transition, but many of those (a seek, the
+    // second emit of a play, a metadata ping that doesn't move the duration)
+    // leave every exposed value untouched. Returning the previous object in that
+    // case keeps `useContext` subscribers from re-rendering for a no-op — the
+    // scrubber, for instance, updates its own DOM and needs no React pass.
+    const prev = apiCache.current;
+    if (prev && shallowSameApi(prev, next)) return prev;
+    apiCache.current = next;
+    return next;
     // transportRev is invalidation-only: it never appears in the object, but
-    // every engine emission bumps it so the snapshot above is recomputed.
+    // every engine emission bumps it so the snapshot above is recomputed (and
+    // then dropped if nothing observable actually changed).
     // eslint-disable-next-line react-hooks/exhaustive-deps
-    [
-      engine,
+  }, [
+    engine,
       source,
       volume,
       decode,

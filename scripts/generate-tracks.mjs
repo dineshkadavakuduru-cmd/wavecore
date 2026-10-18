@@ -16,6 +16,7 @@
  */
 
 import { mkdirSync, writeFileSync, existsSync, statSync } from "node:fs";
+import { spawnSync } from "node:child_process";
 import { dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
 import ffmpeg from "fluent-ffmpeg";
@@ -699,23 +700,37 @@ function writeWav(file, L, R) {
 /** Convert a WAV file to OGG (Opus) using ffmpeg. Returns the output file size. */
 function convertToOgg(wavFile, oggFile) {
   return new Promise((resolve, reject) => {
-    const cmd = ffmpeg(wavFile)
+    ffmpeg(wavFile)
+      // Ogg/Opus muxing writes the duration into the lead-in granule position.
+      // `-map_metadata -1` keeps the container from inheriting WAV tags.
       .outputOptions([
         "-c:a", "libopus",
         "-b:a", OGG_BITRATE,
         "-vbr", "on",
         "-compression_level", "10",
         "-application", "audio",
+        "-vn",
+        "-map_metadata", "-1",
+        "-f", "ogg",
       ])
       .on("end", () => {
         const stats = existsSync(oggFile) ? statSync(oggFile) : null;
         resolve(stats?.size ?? 0);
       })
-      .on("error", (err) => reject(err))
+      .on("error", reject)
+      // `.save()` is output().run() — it already starts the process. Calling
+      // `.run()` as well would spawn a *second* ffmpeg writing the same file,
+      // which is exactly how a corrupt Ogg (no seekable duration) gets shipped.
       .save(oggFile);
-    // Ensure the command is actually started
-    cmd.run();
   });
+}
+
+/** Duration of an audio file in seconds, parsed from `ffmpeg -i`. NaN if absent. */
+function probeDuration(file) {
+  const res = spawnSync(ffmpegStatic, ["-hide_banner", "-i", file], { encoding: "utf8" });
+  const m = /Duration:\s*(\d+):(\d+):(\d+(?:\.\d+)?)/.exec(res.stderr ?? "");
+  if (!m) return NaN;
+  return Number(m[1]) * 3600 + Number(m[2]) * 60 + Number(m[3]);
 }
 
 /* ── run ──────────────────────────────────────────────────────────────── */
@@ -762,6 +777,17 @@ for (const t of TRACKS) {
   // Convert to OGG (Opus) for smaller delivery size
   const oggFile = join(OUT_DIR, `${t.slug}.ogg`);
   const oggBytes = await convertToOgg(wavFile, oggFile);
+
+  // Fail loudly on a bad encode rather than shipping a file the browser will
+  // mis-report (a truncated/muxed-wrong Ogg has no duration, so HTMLAudio
+  // ends the track early — that breakage is invisible until playback).
+  const probed = probeDuration(oggFile);
+  if (!Number.isFinite(probed) || probed < duration - 1) {
+    throw new Error(
+      `${t.slug}.ogg encoded to ${Number.isFinite(probed) ? probed.toFixed(1) + "s" : "no duration"} ` +
+        `but the render is ${duration.toFixed(1)}s — the Ogg is corrupt.`,
+    );
+  }
 
   manifest.push({
     slug: t.slug,

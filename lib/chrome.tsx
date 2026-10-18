@@ -210,13 +210,24 @@ export function ChromeProvider({ children }: { children: ReactNode }) {
     const onKeyDown = (e: KeyboardEvent) => {
       const target = e.target as HTMLElement | null;
       const tag = target?.tagName;
-      // Never hijack keys aimed at a text field. For range sliders (volume),
-      // only ignore the keys they actually handle (arrows, home, end, pg up/down).
-      // Space must always toggle playback globally.
-      const isTextInput = tag === "TEXTAREA" || target?.isContentEditable;
-      const isRangeInput = tag === "INPUT" && (target as HTMLInputElement)?.type === "range";
+      const isRange = tag === "INPUT" && (target as HTMLInputElement)?.type === "range";
+
+      // Anything that natively consumes keystrokes owns its keys completely:
+      // textareas, contenteditable, <select> (letters do type-ahead) and every
+      // <input> except a range slider — text, search, number, date, file, the
+      // lot. Hijacking a digit or a letter there would corrupt the field or fire
+      // a track change from inside a form control. Range sliders are the one
+      // exception: they only get their arrow/home/end keys (moved natively) and
+      // still let Space fall through to the global transport toggle below.
+      const ownsKeys =
+        tag === "TEXTAREA" ||
+        tag === "SELECT" ||
+        target?.isContentEditable === true ||
+        (tag === "INPUT" && !isRange);
+      if (ownsKeys) return;
+
       const keysRangeHandles = ["ArrowLeft", "ArrowRight", "ArrowUp", "ArrowDown", "Home", "End", "PageUp", "PageDown"];
-      if (isTextInput || (isRangeInput && keysRangeHandles.includes(e.key))) return;
+      if (isRange && keysRangeHandles.includes(e.key)) return;
 
       // Enter activates whatever control has focus. Preventing that here would
       // break the control. Without this guard, pressing Enter right after

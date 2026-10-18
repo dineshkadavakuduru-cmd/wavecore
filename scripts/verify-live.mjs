@@ -150,6 +150,13 @@ async function hueSamples(page, count = 8, gapMs = 500) {
 
 const hueRange = (s) => Math.max(...s) - Math.min(...s);
 
+/** "mid · 6.5k pts" → 6500. NaN when the readout is unreadable. */
+function parsePts(render) {
+  const m = /([\d.]+)k pts/.exec(render ?? "");
+  return m ? Number(m[1]) * 1000 : NaN;
+}
+
+
 /** Screenshot → downscaled luminance stats, decoded inside the page. */
 async function shotStats(page) {
   const buffer = await page.screenshot();
@@ -371,8 +378,15 @@ try {
 
   /* ══ 4. pause / stop / volume ══ */
   console.log("\n[4] transport");
+  // Deterministic precondition: start track 1 fresh. The transport UI flips to
+  // PLAYING optimistically, *before* the media element emits `playing`, so a
+  // Space keyed during that load window is a no-op (the engine still reads the
+  // element as paused and calls play()). Let the element actually begin first.
+  await page.keyboard.press("1");
+  await waitMode(page, "PLAYING", 15_000);
+  await page.waitForTimeout(600);
   await page.keyboard.press("Space");
-  const pausedIn = await waitMode(page, "PAUSED", 6000);
+  const pausedIn = await waitMode(page, "PAUSED", 8000);
   record("spacebar pauses", pausedIn >= 0, pausedIn >= 0 ? `${pausedIn}ms` : "stuck playing");
   await page.keyboard.press("Space");
   const resumedIn = await waitMode(page, "PLAYING", 8000);
@@ -578,6 +592,35 @@ try {
   record("mobile: tap plays, scene alive", mobPlayingIn >= 0, `idle ${mobIdleFps.toFixed(1)} fps · heap ${mobHeap.toFixed(1)} MB`);
   await mobCtx.close();
 
+  // 375 px — the narrowest mainstream phone width. Two things must hold at once:
+  // the layout must not overflow horizontally, and the quality heuristic must
+  // step the particle count down from the desktop default (a low-end phone
+  // fingerprint is forced so the assertion is deterministic, not machine-dependent).
+  const narrowCtx = await browser.newContext({
+    viewport: { width: 375, height: 667 }, deviceScaleFactor: 3, hasTouch: true, isMobile: true,
+  });
+  await narrowCtx.addInitScript(() => {
+    try { Object.defineProperty(navigator, "hardwareConcurrency", { get: () => 4, configurable: true }); } catch { /* locked */ }
+    try { Object.defineProperty(navigator, "deviceMemory", { get: () => 4, configurable: true }); } catch { /* locked */ }
+    const orig = window.matchMedia.bind(window);
+    window.matchMedia = (q) => q === "(pointer: coarse)"
+      ? { matches: true, addEventListener() {}, removeEventListener() {} }
+      : orig(q);
+  });
+  const narrow = await narrowCtx.newPage();
+  watch(narrow, "[375] ");
+  await narrow.goto(BASE, { waitUntil: "domcontentloaded" });
+  await narrow.waitForSelector("canvas", { timeout: 60_000 });
+  await narrow.waitForTimeout(5000);
+  const narrowShot = await shotStats(narrow);
+  const narrowRender = (await telemetry(narrow)).render;
+  const overflow = await narrow.evaluate(() => document.documentElement.scrollWidth - window.innerWidth);
+  measures.narrow375 = { render: narrowRender, pts: parsePts(narrowRender), overflowPx: overflow };
+  record("375px: particles scale down, no horizontal overflow",
+    /low|mid/.test(narrowRender ?? "") && parsePts(narrowRender) < 14000 && narrowShot.mean > 0.004 && overflow <= 1,
+    `${narrowRender} · overflow ${overflow}px · mean ${narrowShot.mean.toFixed(4)}`);
+  await narrowCtx.close();
+
   /* ══ 10. reload stability ══ */
   console.log("\n[10] repeated load/unload");
   for (let i = 1; i <= 3; i++) {
@@ -675,6 +718,39 @@ try {
   } finally {
     await fallbackBrowser?.close();
   }
+
+  /* ══ 13. WebGL context loss + recovery ══ */
+  console.log("\n[13] WebGL context-loss recovery");
+  const glCtx = await browser.newContext({ viewport: { width: 1280, height: 800 } });
+  const glp = await glCtx.newPage();
+  watch(glp, "[gl] ");
+  await glp.goto(BASE, { waitUntil: "domcontentloaded" });
+  await glp.waitForSelector("canvas", { timeout: 60_000 });
+  await glp.waitForTimeout(6000);
+  const glBefore = await frameEnergy(glp, 600);
+  const glLost = await glp.evaluate(() => {
+    const canvas = document.querySelector("canvas");
+    const gl = canvas?.getContext("webgl2") || canvas?.getContext("webgl");
+    const ext = gl?.getExtension("WEBGL_lose_context");
+    if (!ext) return false;
+    // Simulate a real GPU reset. Recovery is a fresh mount, not a restore of
+    // this context, so we never call restoreContext().
+    ext.loseContext();
+    return true;
+  });
+  await glp.waitForTimeout(500);
+  const overlayShown = await glp.evaluate(() => document.body.innerText.includes("Graphics context lost"));
+  await glp.waitForTimeout(3500);
+  const glAfter = await frameEnergy(glp, 600);
+  const overlayGone = await glp.evaluate(() => !document.body.innerText.includes("Graphics context lost"));
+  await glp.screenshot({ path: join(SHOTS, "live-gl-restored.png") });
+  measures.glRecovery = { before: Number(glBefore.toFixed(5)), after: Number(glAfter.toFixed(5)), overlayShown, overlayGone };
+  record("WebGL context loss shows notice, then recovers and keeps rendering",
+    glLost && overlayShown && overlayGone && glBefore > 0.0004 && glAfter > 0.0004,
+    glLost
+      ? `notice ${overlayShown}→${overlayGone} · energy ${glBefore.toFixed(5)} → ${glAfter.toFixed(5)}`
+      : "WEBGL_lose_context unavailable");
+  await glCtx.close();
 
   /* ══ errors ══ */
   console.log("\n[errors]");

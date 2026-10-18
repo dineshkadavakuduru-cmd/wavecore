@@ -84,6 +84,11 @@ export function ControlDock() {
     syncDom();
   }, [duration, syncDom]);
 
+  // A seek or metadata change moves the position without toggling play state,
+  // so the readout has to follow engine emissions directly rather than depending
+  // on a React re-render — that keeps scrubbing accurate even while paused.
+  useEffect(() => engine.subscribe(syncDom), [engine, syncDom]);
+
   // Close mobile volume popover when clicking outside
   useEffect(() => {
     if (!showMobileVolume) return;

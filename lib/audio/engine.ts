@@ -372,6 +372,8 @@ export class AudioEngine {
   private micGain: GainNode | null = null;
   /** Whether the analyser is currently wired through to the speakers. */
   private analyserRouted = false;
+  /** Set when the live mic fails *after* it started (device unplugged, revoked). */
+  private micError: string | null = null;
 
   /** Scratch buffer for `getByteFrequencyData`, allocated once. */
   scratch: FrequencyScratch | null = null;
@@ -379,6 +381,11 @@ export class AudioEngine {
   /** True once the graph exists. False means no user gesture has happened yet. */
   get isReady() {
     return this.ctx !== null;
+  }
+
+  /** Live AudioContext state — "running", "suspended", "closed", or null pre-gesture. */
+  get contextState(): AudioContextState | null {
+    return this.ctx?.state ?? null;
   }
 
   get analyser() {
@@ -404,6 +411,11 @@ export class AudioEngine {
       window.AudioContext ??
       (window as unknown as { webkitAudioContext: typeof AudioContext }).webkitAudioContext;
     const ctx = new Ctor({ latencyHint: "interactive" });
+
+    // The browser can suspend the context on its own (autoplay policy, tab
+    // backgrounding, OS audio changes). Re-emitting on state change lets the UI
+    // surface a "click to resume" prompt instead of silently freezing.
+    ctx.addEventListener?.("statechange", () => this.emit());
 
     const analyser = ctx.createAnalyser();
     analyser.fftSize = FFT_SIZE;
@@ -555,6 +567,12 @@ export class AudioEngine {
       if (err instanceof DOMException && err.name === "NotAllowedError") {
         throw new Error("Microphone access was denied. Allow it in the browser's site settings to use this.");
       }
+      if (err instanceof DOMException && (err.name === "NotReadableError" || err.name === "TrackStartError")) {
+        throw new Error("The microphone is already in use by another app or was disconnected. Close it there and try again.");
+      }
+      if (err instanceof DOMException && err.name === "OverconstrainedError") {
+        throw new Error("This device has no microphone that meets the requirements.");
+      }
       throw err instanceof Error ? err : new Error("The microphone could not be started.");
     }
 
@@ -566,7 +584,14 @@ export class AudioEngine {
       this.analyserRouted = false;
     }
 
+    this.micError = null;
     this.micStream = stream;
+    // A device unplugged (or permission revoked) mid-session ends the track
+    // without throwing anywhere — listen for it so the UI can explain and the
+    // graph can be torn back down to a safe state.
+    for (const track of stream.getTracks()) {
+      track.addEventListener("ended", this.handleMicTrackEnded);
+    }
     this.micSource = ctx.createMediaStreamSource(stream);
     // A gain stage between source and analyser keeps the gain structure
     // inspectable without changing level; 1 is neutral.
@@ -580,6 +605,13 @@ export class AudioEngine {
     this.emit();
   }
 
+  /** Fired when a live mic track ends on its own — device pulled, permission revoked. */
+  private handleMicTrackEnded = () => {
+    if (!this.micStream) return;
+    this.micError = "Your microphone was disconnected. Reconnect it and start the mic again.";
+    this.stopMic();
+  };
+
   /** Tear the mic down: nodes disconnected, tracks released, speakers restored. */
   stopMic() {
     if (!this.micStream) return;
@@ -587,7 +619,10 @@ export class AudioEngine {
     this.micGain?.disconnect();
     this.micSource = null;
     this.micGain = null;
-    for (const track of this.micStream.getTracks()) track.stop();
+    for (const track of this.micStream.getTracks()) {
+      track.removeEventListener("ended", this.handleMicTrackEnded);
+      track.stop();
+    }
     this.micStream = null;
 
     if (!this.analyserRouted && this.analyserNode && this.volumeGain) {
@@ -597,6 +632,13 @@ export class AudioEngine {
 
     reactive.mode = this.playable ? "paused" : "idle";
     this.emit();
+  }
+
+  /** Consume the last mid-session mic failure, if any. */
+  takeMicError() {
+    const err = this.micError;
+    this.micError = null;
+    return err;
   }
 
   /* ── transport ────────────────────────────────────────────────────── */

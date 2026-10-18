@@ -98,6 +98,7 @@ export function ChromeLayer() {
 
             <HintStack />
             <MobileControlsHint />
+            <AudioUnlockHint />
             <SourcePanel />
           </motion.div>
         )}
@@ -225,6 +226,29 @@ function MobileControlsHint() {
         </kbd>
       </div>
     </motion.div>
+  );
+}
+
+/**
+ * Visible escape hatch for a browser-suspended AudioContext.
+ *
+ * Autoplay policies can suspend the context after it was already running (a
+ * backgrounded tab, an OS audio-route change). When that happens the scene
+ * keeps drawing but the sound is gone, so this offers the one gesture that
+ * resumes it. It only appears while a source is actually loaded.
+ */
+function AudioUnlockHint() {
+  const { suspended, source, retry } = useAudio();
+  if (!suspended || !source) return null;
+
+  return (
+    <button
+      type="button"
+      onClick={retry}
+      className="glass pointer-events-auto absolute left-1/2 top-20 z-40 -translate-x-1/2 rounded-full px-4 py-2 font-mono text-2xs uppercase tracking-[0.14em] text-chalk-muted transition-colors hover:text-chalk"
+    >
+      Audio paused by the browser — click to resume
+    </button>
   );
 }
 
