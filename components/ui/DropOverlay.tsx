@@ -3,6 +3,7 @@
 import { AnimatePresence, motion } from "motion/react";
 import { useEffect, useRef, useState } from "react";
 import { useAudio } from "@/lib/audio/provider";
+import { useChrome } from "@/lib/chrome";
 
 /**
  * Window-wide drop target.
@@ -19,6 +20,7 @@ const AUDIO_HINT = /\.(wav|mp3|m4a|aac|ogg|oga|opus|flac|aif|aiff|webm)$/i;
 
 export function DropOverlay() {
   const { selectUpload } = useAudio();
+  const { reveal } = useChrome();
   const [dragging, setDragging] = useState(false);
   const depth = useRef(0);
 
@@ -56,9 +58,13 @@ export function DropOverlay() {
         (f) => f.type.startsWith("audio/") || AUDIO_HINT.test(f.name),
       );
       if (!file) return;
-      void selectUpload(file).catch(() => {
-        /* the provider owns the error message */
-      });
+      void selectUpload(file)
+        .catch(() => {
+          /* the provider owns the error message */
+        })
+        .finally(() => {
+          reveal();
+        });
     };
 
     window.addEventListener("dragenter", onDragEnter);
@@ -71,7 +77,7 @@ export function DropOverlay() {
       window.removeEventListener("dragleave", onDragLeave);
       window.removeEventListener("drop", onDrop);
     };
-  }, [selectUpload]);
+  }, [selectUpload, reveal]);
 
   return (
     <AnimatePresence>

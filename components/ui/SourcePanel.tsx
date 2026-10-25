@@ -29,7 +29,7 @@ export function SourcePanel() {
     enableMic,
     stopMic,
   } = useAudio();
-  const { panelOpen, setPanelOpen, zen } = useChrome();
+  const { panelOpen, setPanelOpen, zen, reveal } = useChrome();
   const fileInputRef = useRef<HTMLInputElement>(null);
   const [micRequesting, setMicRequesting] = useState(false);
 
@@ -39,14 +39,21 @@ export function SourcePanel() {
   const handleFiles = (files: FileList | null) => {
     const file = files?.[0];
     if (!file) return;
-    void selectUpload(file).catch(() => {
-      /* error state is surfaced by the provider */
-    });
+    void selectUpload(file)
+      .catch(() => {
+        /* error state is surfaced by the provider */
+      })
+      .finally(() => {
+        setPanelOpen(false);
+        reveal();
+      });
   };
 
   const handleMic = () => {
     if (micActive) {
       stopMic();
+      setPanelOpen(false);
+      reveal();
       return;
     }
     setMicRequesting(true);
@@ -54,7 +61,11 @@ export function SourcePanel() {
       .catch(() => {
         /* error state is surfaced by the provider */
       })
-      .finally(() => setMicRequesting(false));
+      .finally(() => {
+        setMicRequesting(false);
+        setPanelOpen(false);
+        reveal();
+      });
   };
 
   return (
@@ -108,7 +119,11 @@ export function SourcePanel() {
                     <li key={track.slug}>
                       <button
                         type="button"
-                        onClick={() => selectDemo(track)}
+                        onClick={() => {
+                          selectDemo(track);
+                          setPanelOpen(false);
+                          reveal();
+                        }}
                         className={cn(
                           "group flex w-full items-center gap-3 rounded-xl px-3 py-3 text-left transition-colors duration-200",
                           active

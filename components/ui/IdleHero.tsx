@@ -3,6 +3,7 @@
 import { AnimatePresence, motion } from "motion/react";
 import { useEffect, useState } from "react";
 import { useAudio } from "@/lib/audio/provider";
+import { useChrome } from "@/lib/chrome";
 import { cn, formatTime } from "@/lib/utils";
 
 /**
@@ -46,6 +47,7 @@ const rise = {
 
 export function IdleHero() {
   const { tracks, source, selectDemo } = useAudio();
+  const { reveal } = useChrome();
   const started = source !== null;
   // Mirrors hydration: SSR and the first client render agree the content is
   // visible; the entrance animation is enabled one commit after mount.
@@ -99,7 +101,10 @@ export function IdleHero() {
                 <button
                   key={track.slug}
                   type="button"
-                  onClick={() => selectDemo(track)}
+                  onClick={() => {
+                    selectDemo(track);
+                    reveal();
+                  }}
                   className={cn(
                     "group relative overflow-hidden rounded-full border border-white/[0.09]",
                     "bg-white/[0.03] px-4 py-2.5 text-left backdrop-blur-xl transition-all duration-300",
