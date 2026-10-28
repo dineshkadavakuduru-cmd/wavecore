@@ -694,7 +694,7 @@ export class AudioEngine {
   }
 
   async toggle() {
-    if (this.isPlaying) this.pause();
+    if (reactive.mode === "playing") this.pause();
     else await this.play();
   }
 
