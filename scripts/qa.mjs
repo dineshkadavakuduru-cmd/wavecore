@@ -111,50 +111,10 @@ async function waitForServer(timeoutMs = 90_000) {
 
 /* ── image analysis (no image deps: decode PNG in the page itself) ─────── */
 
-/**
- * Brings the chrome back before anything is queried.
- *
- * This is not a workaround — it is the feature. Once the chrome auto-hides the
- * layer goes `inert`, which removes it from the accessibility tree, so role
- * queries legitimately stop finding the transport until the pointer moves.
- */
-async function revealChrome(page) {
-  await page.mouse.move(720, 450);
-  await page.mouse.move(724, 452);
-  await page.waitForTimeout(500);
-}
-
-/**
- * Reveal, then click.
- *
- * A screenshot in a software-rendered headless browser can take longer than the
- * chrome's 3.6 s auto-hide delay, so a single reveal before a click is a race.
- * The retry is not papering over a bug: the chrome hiding again is the correct
- * behaviour, the test just has to wake it back up.
- */
-async function clickWithReveal(page, locator) {
-  await revealChrome(page);
-  try {
-    await locator.click({ timeout: 4000 });
-  } catch {
-    await revealChrome(page);
-    await locator.click({ timeout: 10_000 });
-  }
-}
-
 async function chromeState(page) {
   return page.evaluate(() => document.documentElement.dataset.chrome ?? "unset");
 }
 
-/**
- * DOM-only snapshot of the source panel.
- *
- * Deliberately not a role/label query. Once the chrome auto-hides the layer goes
- * `inert`, which removes it from the accessibility tree — correct behaviour, but
- * it means a11y queries race the 3.6 s auto-hide against Playwright's (slow,
- * software-rendered) screenshots. Structure checks read the DOM directly;
- * role queries are reserved for the places that genuinely have to click.
- */
 async function panelInfo(page) {
   return page.evaluate(() => {
     const panel = document.querySelector('[aria-label="Source panel"]');
@@ -347,7 +307,7 @@ try {
   );
   record("WebGL2 available", webgl?.version === 2, `webgl${webgl?.version}`);
 
-  /* 2. idle state renders real frames (captured before anything auto-hides) */
+  /* 2. idle state renders real frames */
   const idle = await averageStats(page);
   await page.screenshot({ path: join(SHOTS, "01-idle.png") });
   record(
@@ -387,28 +347,29 @@ try {
     `mode=${idleReactive.mode} ambient=${idleReactive.ambient.toFixed(2)}`,
   );
 
-  /* 3. auto-hide, then reveal on pointer movement */
-  await page.waitForTimeout(4200);
+  /* 3. first-play options survive inactivity */
+  await page.waitForTimeout(10_000);
   record(
-    "chrome auto-hides while idle",
-    (await chromeState(page)) === "hidden",
-    `data-chrome=${await chromeState(page)}`,
-  );
-  await page.screenshot({ path: join(SHOTS, "02-autohidden.png") });
-
-  await revealChrome(page);
-  record(
-    "chrome returns on pointer movement",
-    (await chromeState(page)) === "visible",
+    "first-play title, track, and file picker remain visible",
+    (await chromeState(page)) === "visible" &&
+      await page.getByRole("heading", { name: "Wavecore" }).isVisible() &&
+      await page.getByRole("button", { name: /Subsurface/ }).isVisible() &&
+      await page.getByRole("button", { name: "Choose audio file" }).isVisible(),
     `data-chrome=${await chromeState(page)}`,
   );
 
   /* 4. idle → playing */
   const idlePixels = await page.screenshot();
-  await clickWithReveal(page, page.getByRole("button", { name: /Subsurface/ }).first());
+  await page.getByRole("button", { name: /Subsurface/ }).click();
   // Subsurface is beatless for its first four bars; wait past that so the
   // measurements below describe a full mix (kick + sub + hats + arp + clap).
   await page.waitForTimeout(15_000);
+  record(
+    "playback chrome dims while the dock remains available",
+    (await chromeState(page)) === "dimmed" &&
+      await page.getByRole("button", { name: "Next track" }).isVisible(),
+    `data-chrome=${await chromeState(page)}`,
+  );
   await page.screenshot({ path: join(SHOTS, "03-playing.png") });
 
   const playingReactive = await page.evaluate(() => ({ ...window.__wavecore }));
@@ -519,7 +480,6 @@ try {
   );
 
   /* 5. play / pause */
-  await revealChrome(page);
   const dockPlay = page.getByRole("button", { name: /^(Play|Pause)$/ });
   record(
     "transport exposes a play/pause control",
@@ -538,7 +498,6 @@ try {
   record("spacebar resumes", resumed.mode === "playing", `mode=${resumed.mode}`);
 
   /* 6. source panel + track list */
-  await revealChrome(page);
   await page.keyboard.press("o");
   await page.waitForTimeout(700);
 
@@ -551,7 +510,7 @@ try {
   );
   await page.screenshot({ path: join(SHOTS, "04-panel.png") });
 
-  await clickWithReveal(page, page.getByRole("button", { name: /Ion Drift/ }).first());
+  await page.getByRole("button", { name: /Ion Drift/ }).click();
   await page.waitForTimeout(2200);
   const second = await page.evaluate(() => ({
     state: { ...window.__wavecore },
@@ -572,18 +531,20 @@ try {
   await page.screenshot({ path: join(SHOTS, "05-second-track.png") });
 
   /* 7. upload */
-  const fixture = join(ROOT, "public", "tracks", "chromagrid.wav");
-  await revealChrome(page);
-  await page.setInputFiles('input[type="file"]', fixture);
-  // Wait for the ~7 MB read plus decode.
+  const fixture = join(ROOT, "public", "tracks", "chromagrid.ogg");
+  const sourcePanel = page.getByRole("complementary", { name: "Source panel" });
+  await page.getByRole("button", { name: "Track and upload panel" }).click();
+  const choosing = page.waitForEvent("filechooser");
+  await sourcePanel.getByRole("button", { name: "Choose audio file" }).click();
+  await (await choosing).setFiles(fixture);
   await page.waitForTimeout(12_000);
 
   const uploaded = await page.evaluate(() => ({
     reactive: { ...window.__wavecore },
     errorText: document.body.innerText.includes("couldn't be decoded"),
   }));
-  // Assert on the DOM before the screenshot, so PNG encoding can't race the
-  // chrome's auto-hide.
+  await page.getByRole("button", { name: "Track and upload panel" }).click();
+  await sourcePanel.waitFor();
   const uploadedPanel = await panelInfo(page);
   record(
     "upload decodes and plays",
@@ -650,7 +611,7 @@ try {
 
     await mobile.goto(BASE, { waitUntil: "domcontentloaded" });
     await mobile.waitForSelector("canvas", { timeout: 90_000 });
-    await mobile.waitForTimeout(9000);
+    await mobile.waitForTimeout(10_000);
 
     const mobileIdle = await averageStats(mobile, 2);
     await mobile.screenshot({ path: join(SHOTS, "08-mobile-idle.png") });
@@ -663,11 +624,12 @@ try {
       `mean=${mobileIdle.mean.toFixed(4)} variance=${mobileIdle.variance.toFixed(5)} centroid=(${mobileIdle.centroidX.toFixed(2)},${mobileIdle.centroidY.toFixed(2)})`,
     );
 
-    // Pre-play only, so the hero copy is present; the dock carries the status dot.
-    await mobile.mouse.move(195, 420);
-    await mobile.mouse.move(198, 424);
-    await mobile.waitForTimeout(700);
-    await mobile.getByRole("button", { name: /Subsurface/ }).first().tap({ timeout: 20_000 });
+    record(
+      "mobile: first-play options remain visible after 10 seconds",
+      await mobile.getByRole("heading", { name: "Wavecore" }).isVisible() &&
+        await mobile.getByRole("button", { name: "Choose audio file" }).isVisible(),
+    );
+    await mobile.getByRole("button", { name: /Subsurface/ }).tap({ timeout: 20_000 });
     await mobile.waitForTimeout(12_000);
     const mobilePlaying = await mobile.evaluate(() => ({
       mode: window.__wavecore?.mode,
@@ -680,6 +642,22 @@ try {
       mobilePlaying.mode === "playing" && !mobilePlaying.tripped,
       `mode=${mobilePlaying.mode} bass=${mobilePlaying.bass?.toFixed(3)}`,
     );
+    await mobile.touchscreen.tap(195, 330);
+    record("mobile: tapping the scene restores full brightness", (await chromeState(mobile)) === "visible");
+    await mobile.getByRole("button", { name: "Next track" }).tap();
+    await mobile.getByRole("heading", { name: "Ion Drift" }).waitFor();
+    const seek = mobile.getByRole("slider", { name: "Seek" });
+    const range = await seek.boundingBox();
+    record("mobile: seek bar has room for touch", range.width > 200, `width=${range.width.toFixed(0)}px`);
+    await seek.tap({ position: { x: range.width * 0.65, y: range.height / 2 } });
+    const position = Number(await seek.inputValue());
+    record("mobile: seeking advances playback", position > 15, `time=${position.toFixed(2)}s`);
+    await mobile.getByRole("button", { name: "Mute" }).tap();
+    await mobile.getByRole("button", { name: "Unmute" }).waitFor();
+    await mobile.getByRole("button", { name: /recording mode/ }).tap();
+    await mobile.getByRole("button", { name: "Restore controls" }).tap();
+    await seek.waitFor();
+    record("mobile: revealed dock responds to taps and recording mode restores it", true);
   } catch (err) {
     record(
       "mobile checks ran",

@@ -21,7 +21,6 @@ import {
   type QualityTier,
 } from "@/lib/quality";
 import { getAudioEngine, type AudioEngine, type UploadResult } from "./engine";
-import { reactive } from "./reactive";
 
 /** What is currently loaded into the transport. */
 export type Source =
@@ -298,7 +297,7 @@ export function AudioProvider({ children }: { children: ReactNode }) {
       tracks: DEMO_TRACKS,
       source,
       isLoaded: engine.isLoaded,
-      isPlaying: engine.isPlaying || reactive.mode === "playing",
+      isPlaying: engine.isPlaying || micActive,
       duration: engine.duration,
       volume,
       decode,

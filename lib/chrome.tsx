@@ -12,33 +12,17 @@ import {
 } from "react";
 import { useAudio } from "./audio/provider";
 
-/**
- * UI chrome visibility, plus keyboard shortcuts.
- *
- * Three states, in increasing order of "get out of the way":
- *
- *   visible   — pointer moved or a key was pressed recently
- *   hidden    — nothing has happened for a few seconds (auto-hide)
- *   zen       — the whole chrome layer is off and the cursor is gone, for
- *               screen recording. Only leaves zen on an explicit toggle.
- *
- * The panel cannot wedge itself open: even an explicitly-opened panel hides on
- * a longer timeout. "Disappears gracefully and never feels stuck" rules out any
- * state where chrome stays on screen because a flag was left set.
- */
-
-const HIDE_DELAY_ACTIVE = 3600;
-const HIDE_DELAY_PANEL_OPEN = 6500;
+const DIM_DELAY = 3600;
 /** Pointer movement under this interval is ignored — avoids timer churn. */
 const ACTIVITY_THROTTLE = 120;
 
 export type ChromeApi = {
-  /** Whether the chrome layer is currently drawn. */
-  visible: boolean;
+  dimmed: boolean;
+  hasStarted: boolean;
   /** Recording mode: no chrome at all, cursor hidden. */
   zen: boolean;
   panelOpen: boolean;
-  /** Restart the auto-hide countdown and show chrome. */
+  /** Restore full brightness and restart the idle countdown. */
   reveal: () => void;
   setPanelOpen: (open: boolean) => void;
   togglePanel: () => void;
@@ -57,56 +41,39 @@ export function useChrome() {
 }
 
 export function ChromeProvider({ children }: { children: ReactNode }) {
-  const { toggle, stop, seek, setVolume, volume, selectDemo, tracks, engine } = useAudio();
+  const { toggle, stop, seek, setVolume, volume, selectDemo, tracks, engine, isPlaying, micActive } =
+    useAudio();
 
-  const [visible, setVisible] = useState(true);
+  const [dimmed, setDimmed] = useState(false);
+  const [hasStarted, setHasStarted] = useState(false);
   const [zen, setZenState] = useState(false);
   const [panelOpen, setPanelOpenState] = useState(false);
   const [isFullscreen, setIsFullscreen] = useState(false);
 
-  const hideTimer = useRef<number | null>(null);
-  const lastActivity = useRef(0);
+  const dimTimer = useRef<number | null>(null);
+  const lastActivity = useRef(-Infinity);
   const panelOpenRef = useRef(panelOpen);
   panelOpenRef.current = panelOpen;
 
-  const clearHideTimer = useCallback(() => {
-    if (hideTimer.current !== null) {
-      window.clearTimeout(hideTimer.current);
-      hideTimer.current = null;
+  const clearDimTimer = useCallback(() => {
+    if (dimTimer.current !== null) {
+      window.clearTimeout(dimTimer.current);
+      dimTimer.current = null;
     }
   }, []);
 
-  const scheduleHide = useCallback(
-    (delay: number) => {
-      clearHideTimer();
-      hideTimer.current = window.setTimeout(() => setVisible(false), delay);
-    },
-    [clearHideTimer],
-  );
-
   const reveal = useCallback(() => {
     if (zen) return;
-    const now = performance.now();
-    if (now - lastActivity.current < ACTIVITY_THROTTLE) return;
-    lastActivity.current = now;
-    setVisible(true);
-    scheduleHide(panelOpenRef.current ? HIDE_DELAY_PANEL_OPEN : HIDE_DELAY_ACTIVE);
-  }, [scheduleHide, zen]);
+    setDimmed(false);
+    clearDimTimer();
+    if (hasStarted && !panelOpenRef.current) {
+      dimTimer.current = window.setTimeout(() => setDimmed(true), DIM_DELAY);
+    }
+  }, [clearDimTimer, hasStarted, zen]);
 
-  const setPanelOpen = useCallback(
-    (open: boolean) => {
-      setPanelOpenState(open);
-      if (open) {
-        if (!zen) {
-          setVisible(true);
-          scheduleHide(HIDE_DELAY_PANEL_OPEN);
-        }
-      } else {
-        scheduleHide(HIDE_DELAY_ACTIVE);
-      }
-    },
-    [scheduleHide, zen],
-  );
+  const setPanelOpen = useCallback((open: boolean) => {
+    if (!zen) setPanelOpenState(open);
+  }, [zen]);
 
   const togglePanel = useCallback(
     () => setPanelOpen(!panelOpenRef.current),
@@ -133,20 +100,18 @@ export function ChromeProvider({ children }: { children: ReactNode }) {
   const setZen = useCallback(
     (value: boolean) => {
       setZenState(value);
+      setDimmed(false);
       if (value) {
-        clearHideTimer();
-        setVisible(false);
+        clearDimTimer();
         setPanelOpenState(false);
         enterFullscreen();
       } else {
-        setVisible(true);
-        scheduleHide(HIDE_DELAY_ACTIVE);
         // Leaving recording mode should give the page back in one press rather
         // than leaving the user stuck in a fullscreen they can't see controls in.
         exitFullscreen();
       }
     },
-    [clearHideTimer, enterFullscreen, exitFullscreen, scheduleHide],
+    [clearDimTimer, enterFullscreen, exitFullscreen],
   );
 
   const toggleZen = useCallback(() => setZen(!zen), [setZen, zen]);
@@ -168,41 +133,40 @@ export function ChromeProvider({ children }: { children: ReactNode }) {
     return () => document.removeEventListener("fullscreenchange", onChange);
   }, []);
 
-  // Mirror visibility onto <html> so CSS can drop the cursor and pause the
-  // decorative animations without React re-rendering anything.
+  // Keep the recording state available to the existing browser checks.
   useEffect(() => {
     const root = document.documentElement;
-    root.dataset.chrome = visible ? "visible" : "hidden";
+    root.dataset.chrome = zen ? "hidden" : dimmed ? "dimmed" : "visible";
     return () => {
       delete root.dataset.chrome;
     };
-  }, [visible]);
+  }, [dimmed, zen]);
 
   /* ── activity listeners ───────────────────────────────────────────── */
 
   useEffect(() => {
-    const onPointerMove = () => reveal();
-    const onPointerDown = () => {
-      // A tap goes straight to "visible" — the throttle exists for mousemove
-      // spam, not for discrete taps.
-      lastActivity.current = 0;
+    const onPointerMove = () => {
+      const now = performance.now();
+      if (now - lastActivity.current < ACTIVITY_THROTTLE) return;
+      lastActivity.current = now;
       reveal();
     };
     window.addEventListener("pointermove", onPointerMove, { passive: true });
-    window.addEventListener("pointerdown", onPointerDown, { passive: true });
-    window.addEventListener("touchstart", onPointerDown, { passive: true });
+    window.addEventListener("pointerdown", reveal, { passive: true });
     return () => {
       window.removeEventListener("pointermove", onPointerMove);
-      window.removeEventListener("pointerdown", onPointerDown);
-      window.removeEventListener("touchstart", onPointerDown);
+      window.removeEventListener("pointerdown", reveal);
     };
   }, [reveal]);
 
-  // Start the countdown on mount so the idle hero is unobstructed immediately.
   useEffect(() => {
-    scheduleHide(HIDE_DELAY_ACTIVE);
-    return clearHideTimer;
-  }, [scheduleHide, clearHideTimer]);
+    if (isPlaying && !micActive) setHasStarted(true);
+  }, [isPlaying, micActive]);
+
+  useEffect(() => {
+    reveal();
+    return clearDimTimer;
+  }, [panelOpen, reveal, clearDimTimer]);
 
   /* ── keyboard ─────────────────────────────────────────────────────── */
 
@@ -339,7 +303,8 @@ export function ChromeProvider({ children }: { children: ReactNode }) {
 
   const api = useMemo<ChromeApi>(
     () => ({
-      visible,
+      dimmed,
+      hasStarted,
       zen,
       panelOpen,
       reveal,
@@ -351,7 +316,8 @@ export function ChromeProvider({ children }: { children: ReactNode }) {
       isFullscreen,
     }),
     [
-      visible,
+      dimmed,
+      hasStarted,
       zen,
       panelOpen,
       reveal,

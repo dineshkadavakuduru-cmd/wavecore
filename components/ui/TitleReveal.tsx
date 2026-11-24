@@ -106,7 +106,10 @@ export function TitleReveal() {
           the exit of this block, including its own hold and teardown. */}
       {visible && (
         <div ref={rootRef} className="px-6 text-center">
-          <h2 className="font-display text-5xl leading-none tracking-[-0.01em] sm:text-7xl lg:text-8xl">
+          <h2
+            aria-label={visible.title}
+            className="font-display text-5xl leading-none tracking-[-0.01em] sm:text-7xl lg:text-8xl"
+          >
             {splitChars(visible.title).map((char, i) => (
               <span
                 key={`${char}-${i}`}

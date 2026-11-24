@@ -4,7 +4,6 @@ import { AnimatePresence, motion, useReducedMotion } from "motion/react";
 import { useEffect, useState } from "react";
 import { useAudio } from "@/lib/audio/provider";
 import { useChrome } from "@/lib/chrome";
-import { cn } from "@/lib/utils";
 import { ControlDock } from "./ControlDock";
 import { IdleHero } from "./IdleHero";
 import { LiveRegion } from "./LiveRegion";
@@ -12,97 +11,63 @@ import { SourcePanel } from "./SourcePanel";
 import { Telemetry } from "./Telemetry";
 import { TitleReveal } from "./TitleReveal";
 
-/**
- * The whole UI chrome, as one layer over the canvas.
- *
- * It fades rather than unmounting, so a closing panel can still play its own
- * exit animation. The catch with fading instead of unmounting is that invisible
- * controls stay clickable and tabbable, so while hidden the layer also gets
- * `inert` and a descendant-wide pointer-events override.
- *
- * SSR and no-JS: the layer server-renders fully visible. Motion's opacity
- * animation is only switched on after hydration (the `mounted` flag below),
- * and the fade-in over the canvas is handled by the one-shot `.chrome-in`
- * CSS animation on the wrapper — so a slow-JS visitor gets a readable page
- * rather than a blank one, and the pre/post-hydration markup matches.
- */
 export function ChromeLayer() {
-  const { visible, zen } = useChrome();
-  const shouldReduceMotion = useReducedMotion();
-  // Mirrors hydration: the first client render must match the server markup
-  // (chrome visible), and the entrance animation is armed one commit later.
-  const [mounted, setMounted] = useState(false);
-  useEffect(() => {
-    const raf = requestAnimationFrame(() => setMounted(true));
-    return () => cancelAnimationFrame(raf);
-  }, []);
-  // `inert` landed properly in React 19's types; React 18 accepts the attribute
-  // as a string, which is what this spreads in.
-  const inert = !visible && !zen ? ({ inert: "" } as Record<string, string>) : {};
-
-  const transition = shouldReduceMotion
-    ? { duration: 0 }
-    : { duration: 0.5, ease: [0.16, 1, 0.3, 1] };
+  const { dimmed, zen, hasStarted, setZen } = useChrome();
+  const reduceMotion = useReducedMotion();
 
   return (
-    <div
-      {...inert}
-      aria-hidden={!visible}
-      className={cn(
-        "chrome-in absolute inset-0 z-30",
-        !visible && "[&_*]:!pointer-events-none",
-      )}
-    >
-      {/* Skip to controls link — first focusable element for keyboard users */}
-      <a
-        href="#control-dock"
-        className="sr-only focus:not-sr-only focus:absolute focus:top-4 focus:left-4 focus:z-50 focus:glass focus:px-3 focus:py-2 focus:rounded-xl focus:text-sm focus:text-chalk focus:border focus:border-white/20"
-      >
-        Skip to controls
-      </a>
-
-      <LiveRegion />
-
-      <AnimatePresence>
-        {!zen && (
-          <motion.div
-            key="chrome"
-            initial={false}
-            animate={
-              mounted
-                ? { opacity: visible ? 1 : 0 }
-                : { opacity: 1 }
-            }
-            exit={{ opacity: 0 }}
-            transition={transition}
-            className="pointer-events-none absolute inset-0"
+    <div className="pointer-events-none absolute inset-0 z-30">
+      {zen ? (
+        <button
+          type="button"
+          aria-label="Restore controls"
+          onClick={() => setZen(false)}
+          className="touch-instructions pointer-events-auto absolute inset-0 w-full touch-manipulation"
+        />
+      ) : (
+        <motion.div
+          initial={false}
+          animate={{ opacity: dimmed ? 0.78 : 1 }}
+          transition={{ duration: reduceMotion ? 0 : 0.25 }}
+          className="absolute inset-0"
+        >
+          <a
+            href="#control-dock"
+            className="pointer-events-auto sr-only focus:not-sr-only focus:absolute focus:top-4 focus:left-4 focus:z-50 focus:glass focus:px-3 focus:py-2 focus:rounded-xl focus:text-sm focus:text-chalk focus:border focus:border-white/20"
           >
-            {/* ── top rail ───────────────────────────────────────────── */}
-            <div className="absolute inset-x-0 top-0 flex items-start justify-between gap-6 p-5 sm:p-7">
-              <BrandMark />
-              <Telemetry />
-            </div>
+            Skip to controls
+          </a>
 
-            {/* ── bottom-left: hero, then the track-title reveal in the
-                    same slot once something is playing ───────────────── */}
-            <div className="absolute inset-x-5 bottom-24 sm:inset-x-auto sm:bottom-28 sm:left-7 sm:w-[min(42rem,60vw)]">
-              <IdleHero />
-            </div>
+          <LiveRegion />
 
+          <div className="absolute inset-x-0 top-0 flex items-start justify-between gap-6 p-5 sm:p-7">
+            <BrandMark />
+            <Telemetry />
+          </div>
+
+          {hasStarted ? (
             <TitleReveal />
+          ) : (
+            <>
+              <div
+                aria-hidden="true"
+                className="absolute inset-x-0 bottom-0 h-[min(42rem,100%)] bg-gradient-to-t from-ink-950 via-ink-950/90 to-transparent sm:hidden"
+              />
+              <div className="absolute inset-x-5 bottom-32 sm:inset-x-auto sm:bottom-28 sm:left-7 sm:w-[min(42rem,60vw)]">
+                <IdleHero />
+              </div>
+            </>
+          )}
 
-            {/* ── bottom-centre: transport ─────────────────────────── */}
-            <div className="absolute inset-x-0 bottom-5 flex justify-center px-4 sm:bottom-6" id="control-dock">
-              <ControlDock />
-            </div>
+          <div className="absolute inset-x-0 bottom-5 flex justify-center px-4 sm:bottom-6" id="control-dock">
+            <ControlDock />
+          </div>
 
-            <HintStack />
-            <MobileControlsHint />
-            <AudioUnlockHint />
-            <SourcePanel />
-          </motion.div>
-        )}
-      </AnimatePresence>
+          <HintStack />
+          <AudioUnlockHint />
+          <SourcePanel />
+        </motion.div>
+      )}
 
       <ZenHint />
     </div>
@@ -145,7 +110,7 @@ function HintStack() {
       ];
 
   return (
-    <div className="absolute bottom-8 right-5 hidden flex-col items-end gap-1.5 lg:flex">
+    <div className="absolute bottom-8 right-5 desktop-instructions hidden flex-col items-end gap-1.5 lg:flex">
       {hints.map(([key, label]) => (
         <span
           key={key}
@@ -158,74 +123,6 @@ function HintStack() {
         </span>
       ))}
     </div>
-  );
-}
-
-/**
- * Mobile-only hint: "Tap to show controls"
- *
- * Shows once per session on first visit when chrome is auto-hidden.
- * Only renders on screens below lg breakpoint.
- */
-function MobileControlsHint() {
-  const { visible, reveal } = useChrome();
-  const [show, setShow] = useState(false);
-  const [mounted, setMounted] = useState(false);
-
-  useEffect(() => {
-    setMounted(true);
-    // Check if we've shown the hint before in this session
-    const hasSeenHint = sessionStorage.getItem("wavecore-mobile-hint-shown");
-    if (!hasSeenHint && !visible) {
-      // Show after a short delay so the user has time to notice the auto-hide
-      const timer = window.setTimeout(() => setShow(true), 1500);
-      return () => window.clearTimeout(timer);
-    }
-  }, [visible, mounted]);
-
-  const handleDismiss = () => {
-    setShow(false);
-    sessionStorage.setItem("wavecore-mobile-hint-shown", "true");
-  };
-
-  if (!mounted || !show || visible) return null;
-
-  return (
-    <motion.div
-      key="mobile-hint"
-      initial={{ opacity: 0, y: 12, scale: 0.95 }}
-      animate={{ opacity: 1, y: 0, scale: 1 }}
-      exit={{ opacity: 0, y: -8, scale: 0.95 }}
-      transition={{ type: "spring", stiffness: 380, damping: 36 }}
-      onClick={handleDismiss}
-      className="pointer-events-auto lg:hidden absolute bottom-24 left-1/2 -translate-x-1/2 z-40"
-      role="button"
-      tabIndex={0}
-      onKeyDown={(e) => e.key === "Enter" && handleDismiss()}
-      aria-label="Tap to show controls"
-    >
-      <div className="glass rounded-2xl px-5 py-3 flex items-center gap-3 whitespace-nowrap">
-        <span className="relative grid h-8 w-8 place-items-center rounded-full border border-white/10 bg-white/[0.04]">
-          <svg
-            className="h-4 w-4 text-chalk-muted"
-            fill="none"
-            stroke="currentColor"
-            viewBox="0 0 24 24"
-            strokeWidth={1.5}
-            strokeLinecap="round"
-            strokeLinejoin="round"
-          >
-            <path d="M12 5v14M19 12H5" />
-          </svg>
-        </span>
-        <span className="font-mono text-2xs uppercase tracking-[0.14em] text-chalk-muted">
-          Tap to show controls
-        </span>
-        <kbd className="rounded border border-white/10 bg-white/[0.03] px-2 py-0.5 text-[0.55rem] text-chalk-faint">
-          Space
-        </kbd>
-      </div>
-    </motion.div>
   );
 }
 
@@ -282,10 +179,12 @@ function ZenHint() {
           animate={{ opacity: 1 }}
           exit={{ opacity: 0 }}
           transition={{ duration: 0.8, ease: "easeOut" }}
-          className="pointer-events-none absolute bottom-8 left-1/2 -translate-x-1/2 whitespace-nowrap font-mono text-2xs uppercase tracking-[0.2em] text-chalk-ghost"
+          className="pointer-events-none absolute bottom-8 left-1/2 -translate-x-1/2 w-full px-4 text-center font-mono text-2xs uppercase tracking-[0.14em] text-chalk-muted"
         >
-          recording mode · press <span className="text-chalk-muted">H</span> or{" "}
-          <span className="text-chalk-muted">Esc</span> to bring the controls back
+          <span className="touch-instructions">Recording mode · tap the scene to restore controls</span>
+          <span className="desktop-instructions">
+            Recording mode · press <kbd>H</kbd> or <kbd>Esc</kbd> to restore controls
+          </span>
         </motion.p>
       )}
     </AnimatePresence>

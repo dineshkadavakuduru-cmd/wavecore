@@ -39,8 +39,12 @@ export function Telemetry() {
         </span>
       </div>
 
-      {/* The system readout is a desktop flourish; the status dot above is what
-          matters at a glance and it survives on every screen size. */}
+      {source && (
+        <p className="mt-1 max-w-[45vw] truncate text-xs text-chalk-muted sm:hidden">
+          {sourceName}
+        </p>
+      )}
+
       <dl className="mt-3 hidden space-y-1 text-2xs uppercase leading-relaxed text-chalk-faint sm:block">
         <Row label="src" value={truncate(sourceName, 26)} />
         <Row label="fft" value={`${FFT_SIZE} · ${bandCount()} bands`} />

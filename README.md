@@ -34,7 +34,7 @@ Three royalty-free demo tracks are bundled, so it looks good immediately with no
 - **Adaptive quality tiers with FPS-based auto-degradation** — High / Mid / Low, stepped down once if FPS < 42 over 2.5 s window
 - **Recording mode (zen mode)** — One key hides all chrome, enters fullscreen, hides cursor; Esc restores
 - **Comprehensive keyboard shortcuts** — Space (play/pause), arrows (seek/volume), 1–9 (tracks), O (panel), H (zen), F (fullscreen), M (mute)
-- **Glassmorphic UI with auto-hiding chrome** — 3.6 s idle timeout (6.5 s with panel open), pointer/key wake, never wedges open
+- **Playback controls** — First-play choices stay visible. After playback starts, the dock dims on idle and remains interactive.
 - **Post-processing pipeline** — Bloom (always on), bass-linked vignette, punch-only chromatic aberration, film grain
 - **WCAG-aware** — `prefers-reduced-motion` respected, no pinch-zoom disable, semantic HTML, focus-visible outlines
 - **SSR-safe architecture** — No WebGL on server, `useSyncExternalStore` for quality tier, dynamic import with `ssr: false`
@@ -156,16 +156,16 @@ Bloom stays on at every tier; only its mip level count drops.
 | `M` | mute |
 | `Esc` | leave recording mode |
 
-Chrome auto-hides after 3.6 s idle (6.5 s with the panel open), returns on pointer movement or any key. Even an explicitly-opened panel hides on a timeout — there is no state where the chrome can wedge itself on screen.
+Once playback starts, controls dim after 3.6 seconds of inactivity while the source panel is closed. Pointer, touch, or keyboard activity restores full brightness. Recording mode hides the controls until you press `H` or `Esc`, or tap the scene on a touch screen.
 
 ---
 
 ## Mobile
 
-- **Volume control** — Tap the volume button to open a vertical slider popover (YouTube-style)
-- **Track switching** — Prev/Next buttons visible on all screen sizes (smaller on mobile)
+- **Volume control** — Tap the dock’s speaker button to mute or unmute. Adjust the level in the source panel.
+- **Track switching** — Tap Previous or Next in the dock.
 - **Touch gestures** — Swipe left/right on canvas for prev/next track, swipe up/down for volume; designed to not interfere with camera orbit drag
-- **First-visit hint** — "Tap to show controls" overlay appears once per session after chrome auto-hides
+- **Local audio** — Tap Choose audio file on the first-play screen or in the source panel.
 
 ---
 
@@ -201,14 +201,14 @@ The app loads the OGG first (smaller, faster) and falls back to WAV if the brows
 
 ## QA
 
-`npm run qa` drives the Chrome already on the machine via `playwright-core` (no browser download) against a dev server on port 3117. 30 checks, covering:
+`npm run qa` drives the Chrome already on the machine via `playwright-core` (no browser download) against a dev server on port 3117. It covers:
 
 - WebGL2 context, shader compilation, non-flat frames
 - framing metrics decoded back out of the screenshot: luminance centroid, centre vs. edge contrast, bright-area fraction — so "cinematic dark backdrop" is a measured property rather than a claim
 - band dynamic range for bass/mid/treble (catches a band too quiet to drive anything)
 - idle bed before play, the idle → playing transition, ambient crossfade
 - track selection, play/pause by keyboard, title reveal, upload + decode + waveform
-- chrome auto-hide, return on movement, recording mode in and out
+- delayed first play, an interactive dimmed dock, and keyboard and touch recording-mode exits
 - zero console errors, zero failed requests, zero uncaught exceptions
 
 **What it cannot check:** whether the scene actually looks good reacting to audio, and whether bass hits are *felt*. That is a human, eyes-and-ears check and it is the most important one for this project. Run `npm run dev` and watch it.

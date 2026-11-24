@@ -12,7 +12,7 @@ import { useChrome } from "@/lib/chrome";
  * Only shows once per session, dismissible.
  */
 export function InstallPrompt() {
-  const { visible, reveal } = useChrome();
+  const { dimmed, hasStarted, zen, panelOpen, reveal } = useChrome();
   const [deferredPrompt, setDeferredPrompt] = useState<BeforeInstallPromptEvent | null>(null);
   const [show, setShow] = useState(false);
   const [mounted, setMounted] = useState(false);
@@ -73,7 +73,7 @@ export function InstallPrompt() {
     sessionStorage.setItem("wavecore-install-prompt-shown", "true");
   };
 
-  if (!mounted || !show || !deferredPrompt || !visible) return null;
+  if (!mounted || !show || !deferredPrompt || !hasStarted || dimmed || zen || panelOpen) return null;
 
   return (
     <AnimatePresence>
@@ -83,7 +83,7 @@ export function InstallPrompt() {
         animate={{ opacity: 1, y: 0, scale: 1 }}
         exit={{ opacity: 0, y: -10, scale: 0.95 }}
         transition={{ type: "spring", stiffness: 380, damping: 36 }}
-        className="pointer-events-auto absolute bottom-6 left-1/2 -translate-x-1/2 z-40 lg:bottom-24"
+        className="pointer-events-auto absolute top-24 left-1/2 -translate-x-1/2 z-40"
         role="dialog"
         aria-label="Install Wavecore"
       >

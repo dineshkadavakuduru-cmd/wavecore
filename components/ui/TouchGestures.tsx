@@ -18,7 +18,7 @@ import { useChrome } from "@/lib/chrome";
  */
 export function TouchGestures() {
   const { step, volume, setVolume } = useAudio();
-  const { visible, zen, panelOpen, reveal } = useChrome();
+  const { dimmed, zen, panelOpen, reveal } = useChrome();
 
   const touchStart = useRef<{ x: number; y: number; time: number } | null>(null);
   const touchMoved = useRef(false);
@@ -47,7 +47,6 @@ export function TouchGestures() {
       ".chrome-range",
       ".glass",
       "#source-panel",
-      "[data-chrome]",
     ];
     return (
       target.closest(uiSelectors.join(", ")) !== null ||
@@ -58,8 +57,8 @@ export function TouchGestures() {
 
   const handleTouchStart = useCallback(
     (event: TouchEvent) => {
-      // Ignore if chrome is hidden, zen mode, or panel open
-      if (!visible || zen || panelOpen) return;
+      // A first touch after inactivity restores full brightness.
+      if (dimmed || zen || panelOpen) return;
 
       const touch = event.touches[0];
       if (!touch) return;
@@ -78,7 +77,7 @@ export function TouchGestures() {
       };
       touchMoved.current = false;
     },
-    [visible, zen, panelOpen, isUIElement]
+    [dimmed, zen, panelOpen, isUIElement]
   );
 
   const handleTouchMove = useCallback(

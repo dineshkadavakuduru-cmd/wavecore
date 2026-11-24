@@ -1,11 +1,12 @@
 "use client";
 
 import { AnimatePresence, motion } from "motion/react";
-import { useRef, useState } from "react";
+import { useState } from "react";
 import { useAudio } from "@/lib/audio/provider";
 import { useChrome } from "@/lib/chrome";
 import { cn, formatTime } from "@/lib/utils";
-import { CloseIcon, MicIcon, PlayIcon, UploadIcon } from "./icons";
+import { AudioFilePicker } from "./AudioFilePicker";
+import { CloseIcon, MicIcon } from "./icons";
 
 /**
  * Source drawer: bundled tracks on top, upload underneath.
@@ -21,7 +22,8 @@ export function SourcePanel() {
     source,
     isPlaying,
     selectDemo,
-    selectUpload,
+    volume,
+    setVolume,
     error,
     clearError,
     decode,
@@ -30,24 +32,10 @@ export function SourcePanel() {
     stopMic,
   } = useAudio();
   const { panelOpen, setPanelOpen, zen, reveal } = useChrome();
-  const fileInputRef = useRef<HTMLInputElement>(null);
   const [micRequesting, setMicRequesting] = useState(false);
 
   const open = panelOpen && !zen;
   const busy = decode.phase !== "idle";
-
-  const handleFiles = (files: FileList | null) => {
-    const file = files?.[0];
-    if (!file) return;
-    void selectUpload(file)
-      .catch(() => {
-        /* error state is surfaced by the provider */
-      })
-      .finally(() => {
-        setPanelOpen(false);
-        reveal();
-      });
-  };
 
   const handleMic = () => {
     if (micActive) {
@@ -92,6 +80,7 @@ export function SourcePanel() {
             exit={{ opacity: 0, x: 40, filter: "blur(10px)" }}
             transition={{ type: "spring", stiffness: 360, damping: 36, mass: 0.9 }}
             className="glass pointer-events-auto absolute bottom-4 right-4 top-4 z-20 flex w-[min(24rem,92vw)] flex-col overflow-hidden rounded-2xl"
+            id="source-panel"
             aria-label="Source panel"
           >
             <header className="flex items-center justify-between border-b border-white/[0.07] px-5 py-4">
@@ -223,41 +212,10 @@ export function SourcePanel() {
               <div className="mt-5 px-2">
                 <div className="label-micro mb-2 text-chalk-ghost">Your file</div>
 
-                <button
-                  type="button"
-                  disabled={busy}
-                  onClick={() => fileInputRef.current?.click()}
-                  onDragOver={(e) => e.preventDefault()}
-                  onDrop={(e) => {
-                    e.preventDefault();
-                    handleFiles(e.dataTransfer.files);
-                  }}
-                  className={cn(
-                    "group flex w-full flex-col items-center gap-2 rounded-xl border border-dashed border-white/12 px-4 py-7",
-                    "transition-colors duration-300 hover:border-white/25 hover:bg-white/[0.03]",
-                    "disabled:cursor-progress disabled:opacity-50",
-                  )}
-                >
-                  <UploadIcon className="h-5 w-5 text-chalk-faint transition-colors group-hover:text-chalk" />
-                  <span className="text-sm text-chalk-muted group-hover:text-chalk">
-                    {busy ? "Working…" : "Choose a file"}
-                  </span>
-                  <span className="text-2xs uppercase tracking-[0.1em] text-chalk-ghost">
-                    or drop it anywhere on the page
-                  </span>
-                </button>
-
-                <input
-                  ref={fileInputRef}
-                  type="file"
-                  accept="audio/*,.wav,.mp3,.m4a,.aac,.ogg,.opus,.flac,.aif,.aiff"
-                  className="hidden"
-                  onChange={(e) => {
-                    handleFiles(e.target.files);
-                    // Allow re-selecting the same file.
-                    e.target.value = "";
-                  }}
-                />
+                <AudioFilePicker onSelected={() => setPanelOpen(false)} />
+                <p className="desktop-instructions mt-2 text-xs text-chalk-muted">
+                  You can also drop audio anywhere on the page.
+                </p>
 
                 {source?.kind === "upload" && (
                   <div className="mt-4 rounded-xl border border-white/[0.07] bg-white/[0.02] p-3">
@@ -291,10 +249,27 @@ export function SourcePanel() {
                   is no server in this project.
                 </p>
               </div>
+
+              <label className="mt-5 flex items-center gap-3 px-2 text-sm text-chalk-muted lg:hidden">
+                Volume
+                <input
+                  type="range"
+                  min={0}
+                  max={1}
+                  step={0.01}
+                  value={volume}
+                  onChange={(event) => setVolume(Number(event.target.value))}
+                  className="chrome-range min-w-0 flex-1"
+                  style={{ "--range-progress": `${volume * 100}%` } as React.CSSProperties}
+                />
+              </label>
             </div>
 
             <footer className="border-t border-white/[0.07] px-5 py-3.5">
-              <div className="flex flex-wrap gap-x-4 gap-y-1.5 font-mono text-2xs uppercase text-chalk-ghost">
+              <p className="touch-instructions text-xs leading-relaxed text-chalk-muted">
+                Tap a track to play. Use the seek bar and mute button in the dock.
+              </p>
+              <div className="desktop-instructions flex flex-wrap gap-x-4 gap-y-1.5 font-mono text-2xs uppercase text-chalk-ghost">
                 <Shortcut k="Space" label="play" />
                 <Shortcut k="S" label="stop" />
                 <Shortcut k="← →" label="seek" />
